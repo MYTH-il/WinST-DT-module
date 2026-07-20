@@ -1,0 +1,44 @@
+{
+  "session_name": "DiagTrack-Compatibility",
+  "trace_path": "C:\\ProgramData\\WinSTDT\\behavior\\trace.etl",
+  "telemetry_path": "C:\\ProgramData\\WinSTDT\\behavior\\telemetry.json",
+  "state_path": "C:\\ProgramData\\WinSTDT\\behavior\\etw_state.json",
+  "providers": [
+    {
+      "name": "Microsoft-Windows-Kernel-Process",
+      "tier": "baseline",
+      "keywords": "0xffffffffffffffff",
+      "level": "5"
+    },
+    {
+      "name": "Microsoft-Windows-Kernel-File",
+      "tier": "baseline",
+      "keywords": "0xffffffffffffffff",
+      "level": "5"
+    },
+    {
+      "name": "Microsoft-Windows-Kernel-Registry",
+      "tier": "baseline",
+      "keywords": "0xffffffffffffffff",
+      "level": "5"
+    },
+    {
+      "name": "Microsoft-Windows-Kernel-Network",
+      "tier": "baseline",
+      "keywords": "0xffffffffffffffff",
+      "level": "5"
+    },
+    {
+      "name": "Microsoft-Windows-Kernel-Image",
+      "tier": "optional",
+      "keywords": "0xffffffffffffffff",
+      "level": "5"
+    },
+    {
+      "name": "Microsoft-Windows-Threat-Intelligence",
+      "tier": "optional",
+      "keywords": "0xffffffffffffffff",
+      "level": "5"
+    }
+  ]
+}

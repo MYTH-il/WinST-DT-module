@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winst-dt.local/schemas/handoff_manifest.schema.json",
+  "title": "WinST/DT Handoff Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "session_id",
+    "status",
+    "errors",
+    "sample_sha256",
+    "submitted_at_utc",
+    "detonation_start_utc",
+    "detonation_end_utc",
+    "guest_vm_identity",
+    "network_mode",
+    "static_risk_score",
+    "static_hypotheses",
+    "cape_task_id",
+    "capemon_enabled",
+    "telemetry",
+    "tool_versions",
+    "artifact_paths",
+    "integrity"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "session_id": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "capture_error", "analysis_error", "timeout"]
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/error" }
+    },
+    "sample_sha256": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "submitted_at_utc": { "type": "string", "format": "date-time" },
+    "detonation_start_utc": { "type": "string", "format": "date-time" },
+    "detonation_end_utc": { "type": "string", "format": "date-time" },
+    "guest_vm_identity": { "$ref": "#/$defs/guest_vm_identity" },
+    "network_mode": {
+      "type": "string",
+      "enum": ["simulated_inetsim", "live_egress"]
+    },
+    "static_risk_score": { "type": "number" },
+    "static_hypotheses": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "cape_task_id": { "type": "integer", "minimum": 1 },
+    "capemon_enabled": { "type": "boolean" },
+    "telemetry": { "$ref": "#/$defs/telemetry" },
+    "tool_versions": { "$ref": "#/$defs/tool_versions" },
+    "artifact_paths": { "$ref": "#/$defs/artifact_paths" },
+    "integrity": { "$ref": "#/$defs/integrity" }
+  },
+  "$defs": {
+    "error": {
+      "type": "object",
+      "required": ["stage", "code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": [
+            "pretriage",
+            "cape_submission",
+            "detonation",
+            "capture",
+            "packaging",
+            "reporting"
+          ]
+        },
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    },
+    "guest_vm_identity": {
+      "type": "object",
+      "required": ["image_version", "vm_uuid", "guest_ip"],
+      "additionalProperties": false,
+      "properties": {
+        "image_version": { "type": "string", "minLength": 1 },
+        "vm_uuid": { "type": "string", "minLength": 1 },
+        "guest_ip": { "type": "string", "minLength": 1 }
+      }
+    },
+    "provider_issue": {
+      "type": "object",
+      "required": ["provider", "reason", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "provider_missing",
+            "access_denied",
+            "no_events_observed",
+            "agent_error",
+            "unknown"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "required": [
+        "format",
+        "artifact_path",
+        "capture_started",
+        "capture_completed",
+        "telemetry_degraded",
+        "degradation_reasons",
+        "providers_targeted",
+        "providers_enabled",
+        "providers_unavailable",
+        "etw_ti_status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "const": "etl" },
+        "artifact_path": { "const": "behavior/trace.etl" },
+        "capture_started": { "type": "boolean" },
+        "capture_completed": { "type": "boolean" },
+        "telemetry_degraded": { "type": "boolean" },
+        "degradation_reasons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provider_issue" }
+        },
+        "providers_targeted": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "providers_enabled": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "providers_unavailable": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provider_issue" }
+        },
+        "etw_ti_status": {
+          "type": "string",
+          "enum": [
+            "enabled_and_observed",
+            "enabled_no_events",
+            "unavailable",
+            "not_attempted"
+          ]
+        }
+      }
+    },
+    "tool_versions": {
+      "type": "object",
+      "required": [
+        "cape_git_ref",
+        "winstdt_schema_version",
+        "winstdt_reporting_module_version",
+        "winstdt_guest_agent_version",
+        "yara_rules_ref",
+        "clamav_db_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cape_git_ref": { "type": "string", "minLength": 1 },
+        "winstdt_schema_version": { "const": "1.0" },
+        "winstdt_reporting_module_version": { "type": "string", "minLength": 1 },
+        "winstdt_guest_agent_version": { "type": "string", "minLength": 1 },
+        "yara_rules_ref": { "type": "string", "minLength": 1 },
+        "clamav_db_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "artifact_paths": {
+      "type": "object",
+      "required": ["pcap", "trace_etl"],
+      "additionalProperties": false,
+      "properties": {
+        "pcap": { "const": "network/capture.pcapng" },
+        "trace_etl": { "const": "behavior/trace.etl" }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "required": ["hash_manifest", "hash_manifest_sha256", "hash_log_ref"],
+      "additionalProperties": false,
+      "properties": {
+        "hash_manifest": { "const": "hashes.sha256" },
+        "hash_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "hash_log_ref": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "sample_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "sample_md5": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "sample_sha1": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "file_type": "PE32 executable (console) Intel 80386",
+  "static_risk_score": 21.0,
+  "static_hypotheses": ["unsigned"],
+  "yara": {
+    "fast_hits": [],
+    "deep_hits": []
+  },
+  "clamav": {
+    "status": "not_detected",
+    "signature": null
+  },
+  "vt_lookup": "unavailable"
+}

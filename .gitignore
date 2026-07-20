@@ -1,0 +1,66 @@
+# Rust build output
+/target/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE/editor local state
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# Large/proprietary VM and installation media
+*.iso
+*.qcow2
+*.vmdk
+*.vdi
+*.vhd
+*.vhdx
+*.ova
+*.ovf
+
+# Runtime captures and evidence artifacts
+*.pcap
+*.pcapng
+*.etl
+*.evtx
+*.dmp
+*.dump
+*.mem
+
+# Keep intentionally tiny contract fixtures in Git.
+!tests/fixtures/handoff/**/behavior/trace.etl
+!tests/fixtures/handoff/**/network/capture.pcapng
+
+# Local logs and generated state
+logs/
+*.log
+/handoff/
+/captures/
+/images/
+/setup-state/
+
+# OS metadata
+.DS_Store
+Thumbs.db

@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "session_id": "1002",
+  "status": "completed",
+  "errors": [],
+  "sample_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "submitted_at_utc": "2026-07-19T11:00:00Z",
+  "detonation_start_utc": "2026-07-19T11:01:00Z",
+  "detonation_end_utc": "2026-07-19T11:06:00Z",
+  "guest_vm_identity": {
+    "image_version": "win10-22h2-vmcloak-20260719-hardened-a",
+    "vm_uuid": "fixture-vm-uuid-1002",
+    "guest_ip": "10.66.0.102"
+  },
+  "network_mode": "simulated_inetsim",
+  "static_risk_score": 21.0,
+  "static_hypotheses": ["unsigned"],
+  "cape_task_id": 1002,
+  "capemon_enabled": true,
+  "telemetry": {
+    "format": "etl",
+    "artifact_path": "behavior/trace.etl",
+    "capture_started": true,
+    "capture_completed": true,
+    "telemetry_degraded": true,
+    "degradation_reasons": [
+      {
+        "provider": "Microsoft-Windows-Kernel-Image",
+        "reason": "provider_missing",
+        "message": "Provider unavailable in fixture run; ETL trace is still valid."
+      }
+    ],
+    "providers_targeted": [
+      "Microsoft-Windows-Kernel-Process",
+      "Microsoft-Windows-Kernel-File",
+      "Microsoft-Windows-Kernel-Registry",
+      "Microsoft-Windows-Kernel-Network",
+      "Microsoft-Windows-Kernel-Image",
+      "Microsoft-Windows-Threat-Intelligence"
+    ],
+    "providers_enabled": [
+      "Microsoft-Windows-Kernel-Process",
+      "Microsoft-Windows-Kernel-File",
+      "Microsoft-Windows-Kernel-Registry",
+      "Microsoft-Windows-Kernel-Network"
+    ],
+    "providers_unavailable": [
+      {
+        "provider": "Microsoft-Windows-Kernel-Image",
+        "reason": "provider_missing",
+        "message": "Provider unavailable in fixture run; ETL trace is still valid."
+      },
+      {
+        "provider": "Microsoft-Windows-Threat-Intelligence",
+        "reason": "access_denied",
+        "message": "ETW-TI probe failed in fixture run."
+      }
+    ],
+    "etw_ti_status": "unavailable"
+  },
+  "tool_versions": {
+    "cape_git_ref": "fixture-cape-ref",
+    "winstdt_schema_version": "1.0",
+    "winstdt_reporting_module_version": "fixture-reporting-ref",
+    "winstdt_guest_agent_version": "fixture-agent-ref",
+    "yara_rules_ref": "fixture-yara-ref",
+    "clamav_db_version": "fixture-clamav-db"
+  },
+  "artifact_paths": {
+    "pcap": "network/capture.pcapng",
+    "trace_etl": "behavior/trace.etl"
+  },
+  "integrity": {
+    "hash_manifest": "hashes.sha256",
+    "hash_manifest_sha256": "c959059c268d7b8781b3a8f88da603732776664affa0340a9c3721952e5816fd",
+    "hash_log_ref": "fixture-log-1002"
+  }
+}

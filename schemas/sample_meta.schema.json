@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winst-dt.local/schemas/sample_meta.schema.json",
+  "title": "WinST/DT Sample Metadata",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "sample_sha256",
+    "sample_md5",
+    "sample_sha1",
+    "file_type",
+    "static_risk_score",
+    "static_hypotheses",
+    "yara",
+    "clamav",
+    "vt_lookup"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "sample_sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+    "sample_md5": { "type": "string", "pattern": "^[a-fA-F0-9]{32}$" },
+    "sample_sha1": { "type": "string", "pattern": "^[a-fA-F0-9]{40}$" },
+    "file_type": { "type": "string", "minLength": 1 },
+    "static_risk_score": { "type": "number" },
+    "static_hypotheses": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "yara": {
+      "type": "object",
+      "required": ["fast_hits", "deep_hits"],
+      "additionalProperties": true,
+      "properties": {
+        "fast_hits": { "type": "array", "items": { "type": "string" } },
+        "deep_hits": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "clamav": {
+      "type": "object",
+      "required": ["status", "signature"],
+      "additionalProperties": true,
+      "properties": {
+        "status": { "type": "string", "minLength": 1 },
+        "signature": { "type": ["string", "null"] }
+      }
+    },
+    "vt_lookup": { "type": "string", "minLength": 1 }
+  }
+}

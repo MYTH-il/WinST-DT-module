@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "session_id": "1003",
+  "status": "completed",
+  "errors": [],
+  "sample_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "submitted_at_utc": "2026-07-19T12:00:00Z",
+  "detonation_start_utc": "2026-07-19T12:01:00Z",
+  "detonation_end_utc": "2026-07-19T12:06:00Z",
+  "guest_vm_identity": {
+    "image_version": "win10-22h2-vmcloak-20260719-hardened-a",
+    "vm_uuid": "fixture-vm-uuid-1003",
+    "guest_ip": "10.66.0.103"
+  },
+  "network_mode": "simulated_inetsim",
+  "static_risk_score": 12.0,
+  "static_hypotheses": [],
+  "cape_task_id": 1003,
+  "capemon_enabled": true,
+  "telemetry": {
+    "format": "etl",
+    "artifact_path": "behavior/trace.etl",
+    "capture_started": true,
+    "capture_completed": true,
+    "telemetry_degraded": false,
+    "degradation_reasons": [],
+    "providers_targeted": [
+      "Microsoft-Windows-Kernel-Process",
+      "Microsoft-Windows-Kernel-File",
+      "Microsoft-Windows-Kernel-Registry",
+      "Microsoft-Windows-Kernel-Network"
+    ],
+    "providers_enabled": [
+      "Microsoft-Windows-Kernel-Process",
+      "Microsoft-Windows-Kernel-File",
+      "Microsoft-Windows-Kernel-Registry",
+      "Microsoft-Windows-Kernel-Network"
+    ],
+    "providers_unavailable": [],
+    "etw_ti_status": "not_attempted"
+  },
+  "tool_versions": {
+    "cape_git_ref": "fixture-cape-ref",
+    "winstdt_schema_version": "1.0",
+    "winstdt_reporting_module_version": "fixture-reporting-ref",
+    "winstdt_guest_agent_version": "fixture-agent-ref",
+    "yara_rules_ref": "fixture-yara-ref",
+    "clamav_db_version": "fixture-clamav-db"
+  },
+  "artifact_paths": {
+    "pcap": "network/capture.pcapng",
+    "trace_etl": "behavior/trace.etl"
+  },
+  "integrity": {
+    "hash_manifest": "hashes.sha256",
+    "hash_manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash_log_ref": "fixture-log-1003"
+  }
+}

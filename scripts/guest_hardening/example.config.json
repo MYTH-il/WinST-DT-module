@@ -1,0 +1,37 @@
+{
+  "build_id": "win10-22h2-vmcloak-example",
+  "resources": {
+    "minimum_cpu_count": 4,
+    "minimum_ram_gb": 8,
+    "minimum_disk_gb": 80,
+    "minimum_free_disk_gb": 20
+  },
+  "identity": {
+    "blocked_terms": [
+      "sandbox",
+      "malware",
+      "sample",
+      "test",
+      "virus",
+      "analysis",
+      "cuckoo",
+      "cape"
+    ]
+  },
+  "profile": {
+    "directories": [
+      {
+        "path": "%USERPROFILE%\\Downloads",
+        "minimum_files": 3
+      },
+      {
+        "path": "%TEMP%",
+        "minimum_files": 5
+      },
+      {
+        "path": "%APPDATA%\\Microsoft\\Windows\\Recent",
+        "minimum_files": 3
+      }
+    ]
+  }
+}
