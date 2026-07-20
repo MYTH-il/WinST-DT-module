@@ -79,6 +79,38 @@ A golden image is MVP-acceptable only when:
   - Pass/fail table by category.
   - Residual-risk notes.
 
+## Collection Helper
+
+Stage the validation tools into the guest, then run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+.\Invoke-AntiEvasionCollection.ps1 `
+  -AlKhaserPath C:\Tools\al-khaser\al-khaser.exe `
+  -PafishPath C:\Tools\pafish\pafish.exe
+```
+
+The helper writes a timestamped directory under:
+
+```text
+C:\ProgramData\WinSTDT\validation\anti-evasion\
+```
+
+Expected outputs:
+
+- `summary.json`
+- `system-context.json`
+- `al-khaser.result.json`
+- `al-khaser.stdout.txt`
+- `al-khaser.stderr.txt`
+- `pafish.result.json`
+- `pafish.stdout.txt`
+- `pafish.stderr.txt`
+
+The helper does not decide pass/fail automatically. The operator must map raw
+tool output into `docs/validation/golden_image_report_current.md` using the
+Strict Subset Gate categories above.
+
 ## Operating Assumptions
 
 - Strict gate means Strict Subset Gate, not full all-check pass.

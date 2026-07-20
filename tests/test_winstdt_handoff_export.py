@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -86,9 +87,22 @@ class WinstdtHandoffExportTests(unittest.TestCase):
         self.assertEqual(manifest["status"], "completed")
         self.assertTrue(manifest["telemetry"]["telemetry_degraded"])
         self.assertEqual(manifest["artifact_paths"]["trace_etl"], "behavior/trace.etl")
+        self.assertEqual(manifest["artifact_paths"]["report_json"], "report.json")
+        self.assertEqual(manifest["artifact_paths"]["report_html"], "report.html")
         self.assertTrue((bundle / "network" / "capture.pcapng").is_file())
         self.assertTrue((bundle / "behavior" / "trace.etl").is_file())
-        self.assertIn("behavior/trace.etl", (bundle / "hashes.sha256").read_text())
+        self.assertFalse((bundle / "behavior" / "events.jsonl").exists())
+        report = json.loads((bundle / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["session_id"], "42")
+        self.assertEqual(report["enrichment"]["virustotal"], "not_run")
+        self.assertIn(
+            "WinST/DT Analyst Report",
+            (bundle / "report.html").read_text(encoding="utf-8"),
+        )
+        hashes = (bundle / "hashes.sha256").read_text(encoding="utf-8")
+        self.assertIn("behavior/trace.etl", hashes)
+        self.assertIn("report.json", hashes)
+        self.assertIn("report.html", hashes)
 
     def test_missing_etl_exports_capture_error_bundle(self):
         (self.analysis_path / "dump.pcapng").write_bytes(b"pcapng bytes")
@@ -110,8 +124,51 @@ class WinstdtHandoffExportTests(unittest.TestCase):
         self.assertFalse((bundle / "behavior" / "trace.etl").exists())
         hashes = (bundle / "hashes.sha256").read_text(encoding="utf-8")
         self.assertIn("sample.meta.json", hashes)
+        self.assertIn("report.json", hashes)
+        self.assertIn("report.html", hashes)
         self.assertIn("network/capture.pcapng", hashes)
         self.assertNotIn("behavior/trace.etl", hashes)
+
+    def test_events_jsonl_is_disabled_by_default_and_gated(self):
+        (self.analysis_path / "dump.pcapng").write_bytes(b"pcapng bytes")
+        behavior = self.analysis_path / "behavior"
+        behavior.mkdir()
+        (behavior / "trace.etl").write_bytes(b"etl bytes")
+        os.environ["WINSTDT_ENABLE_EVENTS_JSONL"] = "1"
+        try:
+            bundle = self.module.export_handoff_bundle(
+                sample_results(), self.analysis_path, self.options
+            )
+        finally:
+            os.environ.pop("WINSTDT_ENABLE_EVENTS_JSONL", None)
+
+        manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["artifact_paths"]["events_jsonl"], "behavior/events.jsonl")
+        event = json.loads((bundle / "behavior" / "events.jsonl").read_text(encoding="utf-8"))
+        self.assertEqual(event["event_type"], "bundle_summary")
+        self.assertTrue(event["raw"]["etl_authoritative"])
+        self.assertIn("behavior/events.jsonl", (bundle / "hashes.sha256").read_text())
+
+    def test_local_signing_adapter_is_gated(self):
+        (self.analysis_path / "dump.pcapng").write_bytes(b"pcapng bytes")
+        behavior = self.analysis_path / "behavior"
+        behavior.mkdir()
+        (behavior / "trace.etl").write_bytes(b"etl bytes")
+        key_path = self.tempdir / "local-signing.key"
+        key_path.write_bytes(b"unit-test-key")
+        os.environ["WINSTDT_SIGNING_ADAPTER"] = "local_file"
+        os.environ["WINSTDT_LOCAL_SIGNING_KEY"] = str(key_path)
+        try:
+            bundle = self.module.export_handoff_bundle(
+                sample_results(), self.analysis_path, self.options
+            )
+        finally:
+            os.environ.pop("WINSTDT_SIGNING_ADAPTER", None)
+            os.environ.pop("WINSTDT_LOCAL_SIGNING_KEY", None)
+
+        manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["signature"]["adapter"], "local_file")
+        self.assertTrue((bundle / "integrity" / "signature.sha256").is_file())
 
 
 def sample_results():

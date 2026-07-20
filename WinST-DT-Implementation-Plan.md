@@ -143,12 +143,14 @@ This is a **Strict Subset Gate**, not a full all-check pass. The golden image ca
 
 **Orchestration — CAPEv2 owns this, not a custom broker:**
 - Submission goes through **CAPEv2's own task API** (`utils/submit.py` for CLI/scripted submission, or the Django REST API for programmatic submission from the pre-triage subsystem) rather than a hand-built queue table. CAPE's task table (backed by its own Postgres/MongoDB-configured storage) already tracks `pending → running → completed/failed` status per task, which this plan reuses directly.
+- **MongoDB compatibility exception:** on the current kernel `6.19+`/`7.x` host class, MongoDB is intentionally pinned to `8.0.4` because newer MongoDB 8.0 packages fail to start. This is accepted only for a local CAPE analysis host with MongoDB bound to `127.0.0.1:27017`, all MongoDB server/meta packages held, and health monitoring that reports version, hold state, bind address, and exposure status. It is not acceptable for a network-exposed database.
 - **VM checkout/snapshot-revert/launch** is handled entirely by CAPE's `kvm` machinery module against the libvirt host from Section 8 — this plan configures `conf/kvm.conf` to point at the hardened golden snapshot (Section 3.1) and defines the guest pool size there; it does not reimplement broker logic.
 - **Timeout/kill conditions:** set via CAPE's native per-task `timeout` option (MVP default: 5 minutes, extended to 8–10 minutes when the pre-triage hypothesis list — Section 3.2 — flags "packed," passed in as a task option at submission time rather than a hardcoded value). CAPE's own analyzer already implements a heartbeat-style completion/hang detection; this plan relies on that rather than building a parallel watchdog.
 - **Safe teardown** is CAPE-native: its machinery module reverts the guest to the golden snapshot after each task, discarding the overlay automatically as part of normal task completion — no custom teardown code required.
 
 **In-guest instrumentation — ETW added alongside CAPE's native monitor:**
 - CAPEv2 ships its own in-guest instrumentation (`capemon`, a user-mode API-hooking DLL injected per-process, the classic Cuckoo-lineage approach) plus `agent.py` as the control channel. This plan **keeps `agent.py`** (needed for CAPE's task control, file drop-off, and result retrieval — no reason to replace it) but treats `capemon`'s hooking as **optional/secondary** rather than the primary source of behavioral truth, for the evasion-resistance reasons below.
+- The guest image must run a CAPE agent matching the live CAPEv2 checkout on primary port `8000`. The helper `scripts/stage-cape-guest-agent.sh` may validate a modern agent on alternate port `8001`, but CAPE's runtime uses hardcoded guest port `8000`, so durable replacement belongs in the golden-image reseal workflow.
 - **ETW is added as the primary custom instrumentation layer**, running as a separate background service in the VMCloak-built image (installed during the post-VMCloak hardening pass, Section 3.1), consuming Microsoft-documented, built-in providers where available (no custom kernel driver required) and writing raw trace data in `.etl` format. The capture system follows graceful degradation: the trace session is required, but individual analytical providers are feature-flagged instead of being binary pass/fail requirements.
   - **Required capture capability:**
     - The telemetry agent must start.
@@ -346,51 +348,55 @@ The consuming module's implementation only needs: (1) watch `/handoff/` for new 
 
 ### 5.1 MVP Feature Checklist
 
-- [x] CAPEv2 rolling-release deployment using CAPE scripts
-- [x] Ubuntu 24.04/KVM/libvirt host
-- [x] Windows 10 22H2 x64 guest
-- [x] VMCloak-built golden image
-- [x] Post-VMCloak hardening pass
-- [x] Strict-subset al-khaser/Pafish validation gate
+Status legend: `[x] implemented and validated`, `[~] implemented, pending runtime validation`, `[ ] not implemented`, `[gated] implemented behind disabled gate`.
+
+- [~] CAPEv2 rolling-release deployment using CAPE scripts
+- [~] Ubuntu 24.04/KVM/libvirt host
+- [~] Windows 10 22H2 x64 guest
+- [~] VMCloak-built golden image
+- [~] Post-VMCloak hardening pass
+- [~] Strict-subset al-khaser/Pafish validation gate
 - [x] No driver modification/re-signing
 - [x] No custom QEMU/kernel patching
-- [x] CAPE-native task queue/orchestration
-- [x] CAPE-native snapshot/revert lifecycle
-- [x] CAPE-native PCAP capture
-- [x] INetSim/FakeNet-NG simulated egress
+- [~] CAPE-native task queue/orchestration
+- [~] CAPE-native snapshot/revert lifecycle
+- [~] CAPE-native PCAP capture
+- [~] INetSim/FakeNet-NG simulated egress
 - [x] Static triage: type, hashes, PE metadata, entropy, strings
-- [x] YARA fast/deep tiers
-- [x] Local ClamAV aggregation
-- [x] Optional non-blocking VirusTotal hash lookup
-- [x] CAPE `capemon` enabled during validation
+- [gated] YARA fast/deep tiers
+- [gated] Local ClamAV aggregation
+- [gated] Optional non-blocking VirusTotal hash lookup
+- [~] CAPE `capemon` enabled during validation
 - [x] Custom ETW trace-session capture agent
-- [x] Raw `.etl` behavioral telemetry handoff
+- [~] Raw `.etl` behavioral telemetry handoff
 - [x] Provider feature flags in manifest
 - [x] `telemetry_degraded` for missing analytical providers
 - [x] ETW-TI probe, non-blocking
 - [x] Batch handoff bundle
-- [x] `manifest.json`, `sample.meta.json`, PCAP, ETL trace, `hashes.sha256`
+- [~] `manifest.json`, `sample.meta.json`, PCAP, ETL trace, `hashes.sha256`
 - [x] Rust schema validator and mock C2 consumer
-- [x] Custom CAPE reporting/export module
+- [~] Custom CAPE reporting/export module
 - [x] Custom JSON/HTML report
 - [x] Basic SHA-256 evidence manifest
 
 ### 5.2 Finished Module Feature Checklist
 
-- [x] Multi-VM concurrent detonation pool
-- [x] Windows 11 guest variant
-- [x] ETW-TI promoted if validated reliably
-- [x] Structured `events.jsonl` after C2 schema agreement
+Status legend: `[x] implemented and validated`, `[~] implemented, pending runtime validation`, `[ ] not implemented`, `[gated] implemented behind disabled gate`.
+
+- [gated] Multi-VM concurrent detonation pool
+- [gated] Windows 11 guest variant
+- [ ] ETW-TI promoted if validated reliably
+- [gated] Structured `events.jsonl` after C2 schema agreement
 - [x] Analytics that check telemetry feature flags before processing
-- [x] Streaming or near-real-time handoff
-- [x] Live/controlled egress mode after legal/ethics review
-- [x] Disable `capemon` if ETW coverage is sufficient
-- [x] Additional custom user-mode API hook instrumentation only if a post-MVP gap analysis proves CAPE `capemon` plus ETW cannot cover a required workflow
-- [x] Timing/RDTSC evasion improvements
-- [x] Deep hypervisor fingerprint mitigation where feasible
-- [x] Signed evidence manifest
-- [x] HSM/timestamp-backed chain of custody
-- [x] Multi-AV/commercial enrichment if licensed
+- [gated] Streaming or near-real-time handoff
+- [gated] Live/controlled egress mode after legal/ethics review
+- [gated] Disable `capemon` if ETW coverage is sufficient
+- [gated] Additional custom user-mode API hook instrumentation only if a post-MVP gap analysis proves CAPE `capemon` plus ETW cannot cover a required workflow
+- [gated] Timing/RDTSC evasion improvements
+- [gated] Deep hypervisor fingerprint mitigation where feasible
+- [gated] Signed evidence manifest
+- [gated] HSM/timestamp-backed chain of custody
+- [gated] Multi-AV/commercial enrichment if licensed
 - [x] Longer-term retention policy and cleanup automation
 - [x] Monitoring/alerts for golden image staleness, disk pressure, and telemetry degradation rates
 
@@ -454,6 +460,7 @@ The consuming module's implementation only needs: (1) watch `/handoff/` for new 
 - **Corrupted captures** (e.g., a PCAP truncated by an unexpected host issue or a missing, empty, corrupt, or unretrievable ETL trace) should fail the session's packaging step loudly rather than silently shipping a partial artifact — the packaging stage validates required artifact presence and basic format sanity before writing the atomic handoff bundle, and marks the session `"status": "capture_error"` in the manifest rather than omitting the fields, so the C2 module can distinguish "no network activity occurred" from "capture failed." Missing optional providers do not cause `capture_error`; they set `telemetry.telemetry_degraded = true`.
 - **Graceful telemetry degradation can reduce analytic fidelity.** Mitigation: downstream analytics must check `manifest.json.telemetry.telemetry_degraded`, `manifest.json.telemetry.providers_enabled`, and `manifest.json.telemetry.providers_unavailable` before processing, and degraded telemetry must be surfaced in the report rather than treated as full-fidelity behavior capture.
 - **Upstream dependency risk (new, from the CAPEv2 pivot):** the project intentionally follows CAPEv2 rolling release and therefore depends on CAPEv2's release cadence, its own bugs, and possible breaking changes. Mitigation: record the exact CAPEv2 git commit in every bundle's `tool_versions.cape_git_ref`, maintain a known-good local deployment commit for rollback, and treat `git pull`/script reruns as deliberate upgrade events validated against the contract harness and benign detonation tests.
+- **Pinned MongoDB risk:** MongoDB `8.0.4` is behind current patch level and may be flagged by scanners. Mitigation: bind MongoDB to localhost only, fail runtime validation on non-localhost exposure, surface the pin in `monitor-health`, and re-evaluate when MongoDB publishes a fixed secure build for kernel `6.19+`, the host moves below kernel `6.19`, CAPE no longer needs local MongoDB, or the host becomes network-exposed/production-like.
 - **Reporting-module coupling to CAPE's internal schema:** the custom reporting module (Section 3.4) reads CAPE's native `report.json` structure, which is CAPE's internal implementation detail, not a documented stable API. Mitigation: write defensive parsing (missing-field tolerance, schema-version logging) in the reporting module so a rolling CAPE update doesn't silently break the handoff bundle, and re-validate the reporting module against CAPE's output after every CAPEv2 upgrade.
 - **Dual-monitor (capemon + ETW) resource/complexity overhead during the MVP validation window** — running both increases guest resource usage and gives two potentially-conflicting behavioral logs to reconcile. Mitigation: this is intentionally temporary (Section 6, milestone 8); the reporting module treats ETW as authoritative when both sources report the same event, and discrepancies are logged rather than silently dropped, specifically to build the evidence base needed to justify disabling `capemon` later.
 
@@ -623,23 +630,23 @@ sudo useradd -r -m -G libvirt,kvm cape
 
 **Clone CAPEv2 rolling release and install with CAPE scripts:**
 ```bash
-sudo -u cape git clone https://github.com/kevoreilly/CAPEv2.git /opt/cape
-cd /opt/cape
+sudo -u cape git clone https://github.com/kevoreilly/CAPEv2.git /opt/CAPEv2
+cd /opt/CAPEv2
 
 # Read script headers and replace placeholder hardware patterns before running.
 sudo chmod a+x installer/kvm-qemu.sh installer/cape2.sh
-sudo ./installer/kvm-qemu.sh all cape 2>&1 | tee /opt/cape/kvm-qemu.log
+sudo ./installer/kvm-qemu.sh all cape 2>&1 | tee /opt/CAPEv2/kvm-qemu.log
 
-# Reboot after KVM/QEMU installation, then return to /opt/cape.
-sudo ./installer/cape2.sh base cape 2>&1 | tee /opt/cape/cape-install.log
-git rev-parse HEAD > /opt/cape/WINSTDT_CAPE_GIT_REF
+# Reboot after KVM/QEMU installation, then return to /opt/CAPEv2.
+sudo ./installer/cape2.sh base cape 2>&1 | tee /opt/CAPEv2/cape-install.log
+git rev-parse HEAD > /opt/CAPEv2/WINSTDT_CAPE_GIT_REF
 ```
 
 The project follows CAPEv2 rolling release, so the exact `git rev-parse HEAD` value is recorded after every install/upgrade and copied into each handoff bundle's `tool_versions.cape_git_ref`. CAPE upgrades are deliberate `git pull` + script/config validation events, not background updates.
 
 **Configure CAPEv2's `kvm` machinery module** to point at the isolated bridge (8.3) and the golden image (8.8):
 ```
-# /opt/cape/conf/kvm.conf
+# /opt/CAPEv2/conf/kvm.conf
 [kvm]
 machines = winstdt-golden
 
@@ -654,7 +661,7 @@ interface = virbr-winstdt
 
 **Install VMCloak** if the CAPE script has not already installed it (used for image building, 8.8, not for runtime detonation):
 ```bash
-sudo -u cape /opt/cape/venv/bin/pip install vmcloak
+sudo -u cape /opt/CAPEv2/venv/bin/pip install vmcloak
 ```
 
 **CAPEv2's own systemd units** (generated by `cape2.sh`; do not duplicate these with WinST/DT units):
@@ -668,7 +675,7 @@ sudo -u cape /opt/cape/venv/bin/pip install vmcloak
 
 **Drop the custom reporting module** (Section 3.4) into CAPE's extension point once it's written:
 ```bash
-sudo cp winstdt_handoff_export.py /opt/cape/modules/reporting/
-# then register it in /opt/cape/conf/reporting.conf as its own [winstdthandoffexport] section, enabled = yes
+sudo cp winstdt_handoff_export.py /opt/CAPEv2/modules/reporting/
+# then register it in /opt/CAPEv2/conf/reporting.conf as its own [winstdt_handoff_export] section, enabled = yes
 ```
-This is the only file this plan adds *inside* CAPE's own directory tree — everything else (pre-triage worker, ETW agent installed into the guest image, INetSim) lives outside `/opt/cape`, keeping the boundary between "reused CAPE core" and "original project work" clean and easy to point to in a writeup or defense.
+This is the only file this plan adds *inside* CAPE's own directory tree -- everything else (pre-triage worker, ETW agent installed into the guest image, INetSim) lives outside `/opt/CAPEv2`, keeping the boundary between "reused CAPE core" and "original project work" clean and easy to point to in a writeup or defense.

@@ -7,10 +7,10 @@ RERUN_CAPE_INSTALLERS=0
 BUILD_GUEST=0
 WINDOWS_ISO=""
 FAIL_PHASE="${WINSTDT_DASHBOARD_FAIL_PHASE:-}"
-SETUP_SCRIPT_VERSION="v0.21"
+SETUP_SCRIPT_VERSION="v0.22"
 
 CAPE_REPO_URL="${CAPE_REPO_URL:-https://github.com/kevoreilly/CAPEv2.git}"
-CAPE_DIR="${CAPE_DIR:-/opt/cape}"
+CAPE_DIR="${CAPE_DIR:-/opt/CAPEv2}"
 CAPE_USER="${CAPE_USER:-cape}"
 WINSTDT_ROOT="${WINSTDT_ROOT:-/srv/winstdt}"
 NETWORK_NAME="${NETWORK_NAME:-winstdt-isolated}"
@@ -96,7 +96,7 @@ Options:
 
 Environment overrides:
   CAPE_REPO_URL             default: https://github.com/kevoreilly/CAPEv2.git
-  CAPE_DIR                  default: /opt/cape
+  CAPE_DIR                  default: /opt/CAPEv2
   CAPE_USER                 default: cape
   WINSTDT_ROOT              default: /srv/winstdt
   NETWORK_NAME              default: winstdt-isolated
@@ -804,7 +804,13 @@ phase_build() {
   run_root_logged "$key" install -m 0755 "$PROJECT_ROOT/target/x86_64-pc-windows-gnu/release/WinST-DT-module.exe" "$WINSTDT_ROOT/bin/winstdt.exe" || return 1
   run_root_logged "$key" install -d -m 0755 "$WINSTDT_ROOT/scripts/etw_agent" || return 1
   run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/scripts/etw_agent/etw-agent.config.json" "$WINSTDT_ROOT/scripts/etw_agent/etw-agent.config.json" || return 1
-  run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/scripts/etw_agent/Invoke-EtwAgentValidation.ps1" "$WINSTDT_ROOT/scripts/etw_agent/Invoke-EtwAgentValidation.ps1"
+  run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/scripts/etw_agent/Invoke-EtwAgentValidation.ps1" "$WINSTDT_ROOT/scripts/etw_agent/Invoke-EtwAgentValidation.ps1" || return 1
+  run_root_logged "$key" install -d -m 0755 "$WINSTDT_ROOT/scripts/guest_hardening" || return 1
+  run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/scripts/guest_hardening/Invoke-GuestHardening.ps1" "$WINSTDT_ROOT/scripts/guest_hardening/Invoke-GuestHardening.ps1" || return 1
+  run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/scripts/guest_hardening/example.config.json" "$WINSTDT_ROOT/scripts/guest_hardening/example.config.json" || return 1
+  run_root_logged "$key" install -d -m 0755 "$WINSTDT_ROOT/scripts/validation" || return 1
+  run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/scripts/validation/Invoke-BenignDetonation.ps1" "$WINSTDT_ROOT/scripts/validation/Invoke-BenignDetonation.ps1" || return 1
+  run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/scripts/validation/Invoke-AntiEvasionCollection.ps1" "$WINSTDT_ROOT/scripts/validation/Invoke-AntiEvasionCollection.ps1"
 }
 
 phase_overlay() {

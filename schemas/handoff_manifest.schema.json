@@ -57,7 +57,9 @@
     "telemetry": { "$ref": "#/$defs/telemetry" },
     "tool_versions": { "$ref": "#/$defs/tool_versions" },
     "artifact_paths": { "$ref": "#/$defs/artifact_paths" },
-    "integrity": { "$ref": "#/$defs/integrity" }
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "signature": { "$ref": "#/$defs/signature" },
+    "retention_policy": { "$ref": "#/$defs/retention_policy" }
   },
   "$defs": {
     "error": {
@@ -183,7 +185,10 @@
       "additionalProperties": false,
       "properties": {
         "pcap": { "const": "network/capture.pcapng" },
-        "trace_etl": { "const": "behavior/trace.etl" }
+        "trace_etl": { "const": "behavior/trace.etl" },
+        "report_json": { "const": "report.json" },
+        "report_html": { "const": "report.html" },
+        "events_jsonl": { "const": "behavior/events.jsonl" }
       }
     },
     "integrity": {
@@ -197,6 +202,31 @@
           "pattern": "^[a-fA-F0-9]{64}$"
         },
         "hash_log_ref": { "type": "string" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "required": ["adapter", "algorithm", "signature_path", "signed_at_utc"],
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "type": "string",
+          "enum": ["local_file", "hsm"]
+        },
+        "algorithm": { "type": "string", "minLength": 1 },
+        "key_id": { "type": "string" },
+        "signature_path": { "type": "string", "minLength": 1 },
+        "signed_at_utc": { "type": "string", "format": "date-time" }
+      }
+    },
+    "retention_policy": {
+      "type": "object",
+      "required": ["max_age_days", "min_free_gb"],
+      "additionalProperties": false,
+      "properties": {
+        "max_age_days": { "type": "integer", "minimum": 1 },
+        "min_free_gb": { "type": "number", "minimum": 0 },
+        "applied_at_utc": { "type": "string", "format": "date-time" }
       }
     }
   }

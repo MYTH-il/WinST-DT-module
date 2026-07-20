@@ -8,6 +8,7 @@ CAPE's results dictionary because this project tracks CAPEv2 rolling release.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import shutil
@@ -34,6 +35,10 @@ MODULE_VERSION = "0.1.0"
 TRACE_ETL_PATH = "behavior/trace.etl"
 PCAP_PATH = "network/capture.pcapng"
 HASH_MANIFEST_PATH = "hashes.sha256"
+REPORT_JSON_PATH = "report.json"
+REPORT_HTML_PATH = "report.html"
+EVENTS_JSONL_PATH = "behavior/events.jsonl"
+SIGNATURE_PATH = "integrity/signature.sha256"
 BASELINE_PROVIDERS = [
     "Microsoft-Windows-Kernel-Process",
     "Microsoft-Windows-Kernel-File",
@@ -139,17 +144,36 @@ def export_handoff_bundle(
             sample_meta=sample_meta,
             tmp_bundle=tmp_bundle,
         )
+        if events_jsonl_enabled():
+            write_events_jsonl(tmp_bundle / EVENTS_JSONL_PATH, manifest)
+            manifest["artifact_paths"]["events_jsonl"] = EVENTS_JSONL_PATH
+        analyst_report = build_analyst_report(manifest, sample_meta)
+        write_json(tmp_bundle / REPORT_JSON_PATH, analyst_report)
+        write_text(tmp_bundle / REPORT_HTML_PATH, render_analyst_report_html(analyst_report))
         write_hash_manifest(tmp_bundle, manifest["status"])
         manifest["integrity"]["hash_manifest_sha256"] = sha256_file(
             tmp_bundle / HASH_MANIFEST_PATH
         )
+        signature = maybe_sign_hash_manifest(tmp_bundle)
+        if signature:
+            manifest["signature"] = signature
         write_json(tmp_bundle / "manifest.json", manifest)
+        make_bundle_readable(tmp_bundle)
 
         if final_bundle.exists():
             shutil.rmtree(final_bundle)
         os.replace(tmp_bundle, final_bundle)
 
     return final_bundle
+
+
+def make_bundle_readable(bundle: Path) -> None:
+    for path in bundle.rglob("*"):
+        if path.is_dir():
+            path.chmod(0o755)
+        else:
+            path.chmod(0o644)
+    bundle.chmod(0o755)
 
 
 @dataclass(frozen=True)
@@ -280,13 +304,96 @@ def build_manifest(
             "yara_rules_ref": options.yara_rules_ref,
             "clamav_db_version": options.clamav_db_version,
         },
-        "artifact_paths": {"pcap": PCAP_PATH, "trace_etl": TRACE_ETL_PATH},
+        "artifact_paths": {
+            "pcap": PCAP_PATH,
+            "trace_etl": TRACE_ETL_PATH,
+            "report_json": REPORT_JSON_PATH,
+            "report_html": REPORT_HTML_PATH,
+        },
         "integrity": {
             "hash_manifest": HASH_MANIFEST_PATH,
             "hash_manifest_sha256": "0" * 64,
             "hash_log_ref": options.hash_log_ref,
         },
     }
+
+
+def build_analyst_report(
+    manifest: dict[str, Any], sample_meta: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "generated_at_utc": cape_time(None),
+        "session_id": manifest["session_id"],
+        "validation": {
+            "status": manifest["status"],
+            "telemetry_degraded": manifest["telemetry"]["telemetry_degraded"],
+            "warnings": [
+                issue["message"]
+                for issue in manifest["telemetry"].get("degradation_reasons", [])
+            ],
+        },
+        "sample": {
+            "hashes": {
+                "sha256": sample_meta.get("sample_sha256"),
+                "sha1": sample_meta.get("sample_sha1"),
+                "md5": sample_meta.get("sample_md5"),
+            },
+            "file_type": sample_meta.get("file_type"),
+            "static_risk_score": sample_meta.get("static_risk_score"),
+            "static_hypotheses": sample_meta.get("static_hypotheses", []),
+        },
+        "cape": {
+            "task_id": manifest["cape_task_id"],
+            "status": manifest["status"],
+            "submitted_at_utc": manifest["submitted_at_utc"],
+            "detonation_start_utc": manifest["detonation_start_utc"],
+            "detonation_end_utc": manifest["detonation_end_utc"],
+            "guest_vm_identity": manifest["guest_vm_identity"],
+            "capemon_enabled": manifest["capemon_enabled"],
+        },
+        "telemetry": {
+            "etw_provider_state": manifest["telemetry"],
+            "telemetry_degradation_warnings": manifest["telemetry"].get(
+                "degradation_reasons", []
+            ),
+        },
+        "artifact_paths": manifest["artifact_paths"],
+        "enrichment": {
+            "yara": sample_meta.get("yara", {}),
+            "clamav": sample_meta.get("clamav", {}),
+            "virustotal": sample_meta.get("vt_lookup", "not_run"),
+        },
+        "residual_anti_evasion_risks": [
+            "Timing/RDTSC side channels require manual anti-evasion validation.",
+            "CPUID timing side channels remain a residual risk.",
+            "Deep hypervisor introspection cannot be fully hidden by repo-level configuration.",
+            "Driver, kernel, and custom-QEMU findings require external engineering decisions.",
+        ],
+    }
+
+
+def render_analyst_report_html(report: dict[str, Any]) -> str:
+    artifacts = "\n".join(
+        f"<li><code>{html.escape(str(name))}</code>: <code>{html.escape(str(path))}</code></li>"
+        for name, path in report.get("artifact_paths", {}).items()
+    )
+    model = html.escape(json.dumps(report, indent=2, sort_keys=False))
+    return (
+        "<!doctype html>\n"
+        '<html lang="en"><head><meta charset="utf-8">'
+        f"<title>WinST/DT Report {html.escape(str(report['session_id']))}</title>"
+        "<style>body{font-family:Arial,sans-serif;margin:32px;line-height:1.45;color:#202124}"
+        "code,pre{background:#f4f6f8;border:1px solid #d9dde3;border-radius:4px}"
+        "code{padding:1px 4px}pre{padding:16px;overflow:auto}.status{font-weight:700}</style>"
+        "</head><body>"
+        "<h1>WinST/DT Analyst Report</h1>"
+        f"<p>Session <code>{html.escape(str(report['session_id']))}</code> validation status: "
+        f"<span class=\"status\">{html.escape(str(report['validation']['status']))}</span></p>"
+        f"<h2>Artifacts</h2><ul>{artifacts}</ul>"
+        f"<h2>Report Model</h2><pre>{model}</pre>"
+        "</body></html>\n"
+    )
 
 
 def build_telemetry(sidecar: dict[str, Any]) -> dict[str, Any]:
@@ -361,11 +468,13 @@ def copy_pcap(source: Path, destination: Path, options: ExportOptions) -> None:
 
 
 def write_hash_manifest(bundle: Path, status: str) -> None:
-    relative_paths = ["sample.meta.json"]
+    relative_paths = ["sample.meta.json", REPORT_JSON_PATH, REPORT_HTML_PATH]
     if usable_file(bundle / PCAP_PATH):
         relative_paths.append(PCAP_PATH)
     if status == "completed" or usable_file(bundle / TRACE_ETL_PATH):
         relative_paths.append(TRACE_ETL_PATH)
+    if usable_file(bundle / EVENTS_JSONL_PATH):
+        relative_paths.append(EVENTS_JSONL_PATH)
 
     lines = [f"{sha256_file(bundle / relative)}  {relative}" for relative in relative_paths]
     (bundle / HASH_MANIFEST_PATH).write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -401,6 +510,66 @@ def read_first_json(paths: list[Path]) -> dict[str, Any]:
 
 def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+
+
+def write_text(path: Path, value: str) -> None:
+    path.write_text(value, encoding="utf-8")
+
+
+def write_events_jsonl(path: Path, manifest: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    event = {
+        "schema_version": SCHEMA_VERSION,
+        "session_id": manifest["session_id"],
+        "timestamp_utc": cape_time(None),
+        "source": "cape",
+        "event_type": "bundle_summary",
+        "raw": {
+            "status": manifest["status"],
+            "cape_task_id": manifest["cape_task_id"],
+            "telemetry_degraded": manifest["telemetry"]["telemetry_degraded"],
+            "etl_authoritative": True,
+        },
+    }
+    path.write_text(json.dumps(event, sort_keys=False) + "\n", encoding="utf-8")
+
+
+def events_jsonl_enabled() -> bool:
+    return os.environ.get("WINSTDT_ENABLE_EVENTS_JSONL", "").strip().lower() in {
+        "1",
+        "yes",
+        "true",
+        "on",
+    }
+
+
+def maybe_sign_hash_manifest(bundle: Path) -> dict[str, Any] | None:
+    adapter = os.environ.get("WINSTDT_SIGNING_ADAPTER", "").strip().lower()
+    if not adapter:
+        return None
+    if adapter == "hsm":
+        raise RuntimeError(
+            "HSM signing is disabled by default and requires a configured signer adapter"
+        )
+    if adapter != "local_file":
+        raise RuntimeError(f"unsupported signing adapter: {adapter}")
+    key_path = os.environ.get("WINSTDT_LOCAL_SIGNING_KEY", "").strip()
+    if not key_path:
+        raise RuntimeError("local_file signing requires WINSTDT_LOCAL_SIGNING_KEY")
+    key = Path(key_path).read_bytes()
+    digest = hashlib.sha256()
+    digest.update(key)
+    digest.update((bundle / HASH_MANIFEST_PATH).read_bytes())
+    signature_path = bundle / SIGNATURE_PATH
+    signature_path.parent.mkdir(parents=True, exist_ok=True)
+    signature_path.write_text(digest.hexdigest() + "\n", encoding="utf-8")
+    return {
+        "adapter": "local_file",
+        "algorithm": "sha256(key || hashes.sha256)",
+        "key_id": hashlib.sha256(key).hexdigest()[:16],
+        "signature_path": SIGNATURE_PATH,
+        "signed_at_utc": cape_time(None),
+    }
 
 
 def sha256_file(path: Path) -> str:

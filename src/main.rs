@@ -1,11 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs,
+    env, fs,
     io::{self, Read},
     path::{Path, PathBuf},
     process::{Command as ProcessCommand, ExitCode},
     thread,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use clap::{Parser, Subcommand};
@@ -13,6 +13,7 @@ use goblin::pe::{PE, section_table::SectionTable};
 use md5::Md5;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -23,6 +24,8 @@ const PCAP_PATH: &str = "network/capture.pcapng";
 const HASH_MANIFEST_PATH: &str = "hashes.sha256";
 const MANIFEST_PATH: &str = "manifest.json";
 const SAMPLE_META_PATH: &str = "sample.meta.json";
+const REPORT_JSON_PATH: &str = "report.json";
+const REPORT_HTML_PATH: &str = "report.html";
 
 #[derive(Debug, Parser)]
 #[command(name = "winstdt")]
@@ -52,6 +55,39 @@ enum Command {
         /// Poll interval for watch mode.
         #[arg(long, default_value_t = 5000)]
         interval_ms: u64,
+    },
+    /// Generate stable analyst JSON and HTML reports for a bundle.
+    ReportBundle {
+        /// Path to /handoff/{session_id}.
+        bundle: PathBuf,
+        /// Output path for report.json.
+        #[arg(long)]
+        json: PathBuf,
+        /// Output path for report.html.
+        #[arg(long)]
+        html: PathBuf,
+    },
+    /// Compare ETW and capemon coverage signals for a bundle.
+    CompareTelemetry {
+        /// Path to /handoff/{session_id}.
+        bundle: PathBuf,
+    },
+    /// Remove old completed handoff bundles while respecting a free-space floor.
+    CleanupHandoff {
+        /// Path to /handoff.
+        root: PathBuf,
+        /// Only remove bundle directories older than this many days.
+        #[arg(long)]
+        max_age_days: u64,
+        /// Stop cleanup once this free-space floor is met.
+        #[arg(long)]
+        min_free_gb: f64,
+    },
+    /// Summarize local handoff health and gated runtime status.
+    MonitorHealth {
+        /// Path to /handoff.
+        #[arg(long, default_value = "/srv/winstdt/handoff")]
+        handoff_root: PathBuf,
     },
     /// Run standalone static pre-triage and emit sample.meta.json.
     Pretriage {
@@ -111,6 +147,17 @@ enum SessionStatus {
     Timeout,
 }
 
+impl SessionStatus {
+    fn as_str(&self) -> &'static str {
+        match self {
+            SessionStatus::Completed => "completed",
+            SessionStatus::CaptureError => "capture_error",
+            SessionStatus::AnalysisError => "analysis_error",
+            SessionStatus::Timeout => "timeout",
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct ManifestError {
     stage: String,
@@ -162,6 +209,12 @@ enum EtwTiStatus {
 struct ArtifactPaths {
     pcap: String,
     trace_etl: String,
+    #[serde(default)]
+    report_json: Option<String>,
+    #[serde(default)]
+    report_html: Option<String>,
+    #[serde(default)]
+    events_jsonl: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -184,6 +237,45 @@ struct ValidationReport {
     status: SessionStatus,
     telemetry_degraded: bool,
     warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AnalystReport {
+    schema_version: &'static str,
+    generated_at_unix: u64,
+    session_id: String,
+    validation: ReportValidation,
+    sample: Value,
+    cape: Value,
+    telemetry: Value,
+    artifact_paths: Value,
+    enrichment: Value,
+    residual_anti_evasion_risks: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+struct ReportValidation {
+    status: String,
+    telemetry_degraded: bool,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug)]
+struct HandoffHealth {
+    total_bundles: usize,
+    completed: usize,
+    capture_error: usize,
+    analysis_error: usize,
+    timeout: usize,
+    degraded: usize,
+}
+
+#[derive(Debug, Default)]
+struct MongoHealth {
+    version: Option<String>,
+    bind_addresses: Vec<String>,
+    packages_held: Option<bool>,
+    exposure_pass: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -367,6 +459,43 @@ fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        Command::ReportBundle { bundle, json, html } => {
+            match report_bundle(&bundle, &json, &html) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("report-bundle failed for {}: {error}", bundle.display());
+                    ExitCode::from(1)
+                }
+            }
+        }
+        Command::CompareTelemetry { bundle } => match compare_telemetry(&bundle) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("compare-telemetry failed for {}: {error}", bundle.display());
+                ExitCode::from(1)
+            }
+        },
+        Command::CleanupHandoff {
+            root,
+            max_age_days,
+            min_free_gb,
+        } => match cleanup_handoff(&root, max_age_days, min_free_gb) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("cleanup-handoff failed for {}: {error}", root.display());
+                ExitCode::from(1)
+            }
+        },
+        Command::MonitorHealth { handoff_root } => match monitor_health(&handoff_root) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!(
+                    "monitor-health failed for {}: {error}",
+                    handoff_root.display()
+                );
+                ExitCode::from(1)
+            }
+        },
         Command::Pretriage {
             sample,
             output,
@@ -388,6 +517,253 @@ fn main() -> ExitCode {
             }
         },
     }
+}
+
+fn report_bundle(bundle: &Path, json_path: &Path, html_path: &Path) -> Result<()> {
+    let validation = validate_bundle(bundle, true)?;
+    let manifest: Value = read_json(&bundle.join(MANIFEST_PATH))?;
+    let sample_meta: Value = read_json(&bundle.join(SAMPLE_META_PATH))?;
+    let report = build_analyst_report(&validation, &manifest, &sample_meta);
+    write_json_file(json_path, &report)?;
+    write_text_file(html_path, &render_analyst_report_html(&report))
+}
+
+fn build_analyst_report(
+    validation: &ValidationReport,
+    manifest: &Value,
+    sample_meta: &Value,
+) -> AnalystReport {
+    AnalystReport {
+        schema_version: SCHEMA_VERSION,
+        generated_at_unix: now_unix_seconds(),
+        session_id: validation.session_id.clone(),
+        validation: ReportValidation {
+            status: validation.status.as_str().to_string(),
+            telemetry_degraded: validation.telemetry_degraded,
+            warnings: validation.warnings.clone(),
+        },
+        sample: json!({
+            "hashes": {
+                "sha256": value_at(sample_meta, "/sample_sha256"),
+                "sha1": value_at(sample_meta, "/sample_sha1"),
+                "md5": value_at(sample_meta, "/sample_md5")
+            },
+            "file_type": value_at(sample_meta, "/file_type"),
+            "static_risk_score": value_at(sample_meta, "/static_risk_score"),
+            "static_hypotheses": value_at(sample_meta, "/static_hypotheses")
+        }),
+        cape: json!({
+            "task_id": value_at(manifest, "/cape_task_id"),
+            "status": value_at(manifest, "/status"),
+            "submitted_at_utc": value_at(manifest, "/submitted_at_utc"),
+            "detonation_start_utc": value_at(manifest, "/detonation_start_utc"),
+            "detonation_end_utc": value_at(manifest, "/detonation_end_utc"),
+            "guest_vm_identity": value_at(manifest, "/guest_vm_identity"),
+            "capemon_enabled": value_at(manifest, "/capemon_enabled")
+        }),
+        telemetry: json!({
+            "etw_provider_state": value_at(manifest, "/telemetry"),
+            "telemetry_degradation_warnings": value_at(manifest, "/telemetry/degradation_reasons")
+        }),
+        artifact_paths: value_at(manifest, "/artifact_paths"),
+        enrichment: json!({
+            "yara": value_at(sample_meta, "/yara"),
+            "clamav": value_at(sample_meta, "/clamav"),
+            "virustotal": value_at(sample_meta, "/vt_lookup")
+        }),
+        residual_anti_evasion_risks: residual_anti_evasion_risks(),
+    }
+}
+
+fn render_analyst_report_html(report: &AnalystReport) -> String {
+    let report_json = serde_json::to_value(report).unwrap_or_else(|_| json!({}));
+    let artifact_paths = report
+        .artifact_paths
+        .as_object()
+        .map(|paths| {
+            paths
+                .iter()
+                .map(|(name, path)| {
+                    format!(
+                        "<li><code>{}</code>: <code>{}</code></li>",
+                        escape_html(name),
+                        escape_html(path.as_str().unwrap_or(""))
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    format!(
+        concat!(
+            "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">",
+            "<title>WinST/DT Report {session}</title>",
+            "<style>body{{font-family:Arial,sans-serif;margin:32px;line-height:1.45;color:#202124}}",
+            "code,pre{{background:#f4f6f8;border:1px solid #d9dde3;border-radius:4px}}",
+            "code{{padding:1px 4px}}pre{{padding:16px;overflow:auto}}",
+            ".status{{font-weight:700}}</style></head><body>",
+            "<h1>WinST/DT Analyst Report</h1>",
+            "<p>Session <code>{session}</code> validation status: <span class=\"status\">{status}</span></p>",
+            "<h2>Artifacts</h2><ul>{artifacts}</ul>",
+            "<h2>Report Model</h2><pre>{model}</pre>",
+            "</body></html>\n"
+        ),
+        session = escape_html(&report.session_id),
+        status = escape_html(&report.validation.status),
+        artifacts = artifact_paths,
+        model = escape_html(&serde_json::to_string_pretty(&report_json).unwrap_or_default())
+    )
+}
+
+fn compare_telemetry(bundle: &Path) -> Result<()> {
+    let validation = validate_bundle(bundle, true)?;
+    let manifest: Value = read_json(&bundle.join(MANIFEST_PATH))?;
+    let telemetry = value_at(&manifest, "/telemetry");
+    let capemon_enabled = value_at(&manifest, "/capemon_enabled")
+        .as_bool()
+        .unwrap_or(true);
+    let degraded = telemetry
+        .get("telemetry_degraded")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let enabled_count = telemetry
+        .get("providers_enabled")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or_default();
+    let targeted_count = telemetry
+        .get("providers_targeted")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or_default();
+    let decision = if capemon_enabled {
+        "keep_capemon_enabled"
+    } else if degraded || enabled_count < targeted_count {
+        "re_enable_capemon"
+    } else {
+        "capemon_disabled_by_config"
+    };
+
+    println!(
+        "session_id={} validation_status={:?} capemon_enabled={} etw_enabled={}/{} telemetry_degraded={} decision={}",
+        validation.session_id,
+        validation.status,
+        capemon_enabled,
+        enabled_count,
+        targeted_count,
+        degraded,
+        decision
+    );
+    for warning in validation.warnings {
+        println!("warning: {warning}");
+    }
+    Ok(())
+}
+
+fn cleanup_handoff(root: &Path, max_age_days: u64, min_free_gb: f64) -> Result<()> {
+    if max_age_days == 0 {
+        return contract_error("--max-age-days must be greater than zero");
+    }
+    let cutoff = SystemTime::now()
+        .checked_sub(Duration::from_secs(max_age_days.saturating_mul(86_400)))
+        .ok_or_else(|| ValidationError::Contract("invalid max age".to_string()))?;
+    let mut removed = 0_usize;
+    let mut candidates = bundle_dirs_older_than(root, cutoff)?;
+    candidates.sort_by_key(|path| {
+        path.metadata()
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(UNIX_EPOCH)
+    });
+
+    for bundle in candidates {
+        if free_gb(root)? >= min_free_gb {
+            break;
+        }
+        fs::remove_dir_all(&bundle).map_err(|source| ValidationError::Write {
+            path: bundle.clone(),
+            source,
+        })?;
+        removed += 1;
+    }
+
+    println!(
+        "cleanup_handoff root={} removed={} free_gb={:.2}",
+        root.display(),
+        removed,
+        free_gb(root)?
+    );
+    Ok(())
+}
+
+fn monitor_health(root: &Path) -> Result<()> {
+    let health = handoff_health(root)?;
+    let degradation_rate = if health.total_bundles == 0 {
+        0.0
+    } else {
+        health.degraded as f64 / health.total_bundles as f64
+    };
+    let free = free_gb(root)?;
+    let golden_report = env::var_os("WINSTDT_GOLDEN_IMAGE_REPORT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("docs/validation/golden_image_report_current.md"));
+    let stale_days = golden_report_age_days(&golden_report).unwrap_or(u64::MAX);
+    let stale_limit = env::var("WINSTDT_GOLDEN_IMAGE_MAX_AGE_DAYS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(30);
+    let golden_decision = read_to_string(&golden_report)
+        .ok()
+        .and_then(|content| current_golden_decision(&content))
+        .unwrap_or_else(|| "unknown".to_string());
+    println!(
+        "handoff_health root={} total={} completed={} capture_error={} analysis_error={} timeout={} telemetry_degraded={} degradation_rate={:.3}",
+        root.display(),
+        health.total_bundles,
+        health.completed,
+        health.capture_error,
+        health.analysis_error,
+        health.timeout,
+        health.degraded,
+        degradation_rate
+    );
+    println!("disk_pressure root={} free_gb={:.2}", root.display(), free);
+    println!(
+        "golden_image report={} decision={} age_days={} stale={}",
+        golden_report.display(),
+        golden_decision,
+        stale_days,
+        stale_days > stale_limit || !golden_decision.eq_ignore_ascii_case("accepted")
+    );
+    println!(
+        "gates events_jsonl={} streaming_handoff={} live_egress={} vm_count={}",
+        env_flag("WINSTDT_ENABLE_EVENTS_JSONL"),
+        env_flag("WINSTDT_STREAMING_HANDOFF"),
+        env_flag("WINSTDT_LIVE_EGRESS_ENABLED"),
+        env::var("WINSTDT_VM_COUNT").unwrap_or_else(|_| "1".to_string())
+    );
+    let mongo = mongo_health();
+    let version = mongo.version.as_deref().unwrap_or("unknown");
+    let secure_exception = version == "8.0.4";
+    let bind = if mongo.bind_addresses.is_empty() {
+        "unknown".to_string()
+    } else {
+        mongo.bind_addresses.join(",")
+    };
+    let packages_held = mongo.packages_held.map(bool_word).unwrap_or("unknown");
+    let exposure = match mongo.exposure_pass {
+        Some(true) => "pass",
+        Some(false) => "fail",
+        None => "unknown",
+    };
+    println!(
+        "mongodb_version={} mongodb_secure_exception={} mongodb_bind={} mongodb_packages_held={} mongodb_exposure={}",
+        version,
+        bool_word(secure_exception),
+        bind,
+        packages_held,
+        exposure
+    );
+    Ok(())
 }
 
 fn run_etw_agent(action: EtwAgentAction, config_path: &Path) -> Result<()> {
@@ -574,6 +950,11 @@ fn run_platform_command(program: &str, args: &[&str]) -> Result<()> {
 }
 
 fn mock_consume(root: &Path, once: bool, interval: Duration) -> Result<()> {
+    if !once && !env_flag("WINSTDT_STREAMING_HANDOFF") {
+        return contract_error(
+            "watch mode requires WINSTDT_STREAMING_HANDOFF=1; use --once for batch handoff",
+        );
+    }
     let mut seen = HashSet::new();
     loop {
         for entry in read_dir_sorted(root)? {
@@ -624,8 +1005,18 @@ fn pretriage_sample(sample: &Path, max_strings: usize) -> Result<PretriageReport
     let utf16le_strings = extract_utf16le_strings(&bytes, 4);
     let all_strings = merged_limited_strings(&ascii_strings, &utf16le_strings, max_strings);
     let iocs = extract_iocs(&all_strings);
+    let yara = run_yara_tiers(sample);
+    let clamav = run_clamav(sample);
+    let vt_lookup = run_vt_hash_lookup(&sample_sha256);
     let (static_hypotheses, static_risk_score) =
         score_static_findings(whole_file_entropy, pe.as_ref(), &iocs, &file_type);
+    let (static_hypotheses, static_risk_score) = score_scanner_findings(
+        static_hypotheses,
+        static_risk_score,
+        &yara,
+        &clamav,
+        &vt_lookup,
+    );
 
     Ok(PretriageReport {
         schema_version: SCHEMA_VERSION,
@@ -637,15 +1028,9 @@ fn pretriage_sample(sample: &Path, max_strings: usize) -> Result<PretriageReport
         whole_file_entropy,
         static_risk_score,
         static_hypotheses,
-        yara: YaraSummary {
-            fast_hits: Vec::new(),
-            deep_hits: Vec::new(),
-        },
-        clamav: ClamAvSummary {
-            status: "not_run".to_string(),
-            signature: None,
-        },
-        vt_lookup: "not_run".to_string(),
+        yara,
+        clamav,
+        vt_lookup,
         strings: StringSummary {
             ascii_count: ascii_strings.len(),
             utf16le_count: utf16le_strings.len(),
@@ -654,6 +1039,163 @@ fn pretriage_sample(sample: &Path, max_strings: usize) -> Result<PretriageReport
         iocs,
         pe,
     })
+}
+
+fn run_yara_tiers(sample: &Path) -> YaraSummary {
+    YaraSummary {
+        fast_hits: env::var_os("WINSTDT_YARA_FAST_RULES")
+            .map(PathBuf::from)
+            .map(|rules| run_yara_rules(&rules, sample))
+            .unwrap_or_default(),
+        deep_hits: env::var_os("WINSTDT_YARA_DEEP_RULES")
+            .map(PathBuf::from)
+            .map(|rules| run_yara_rules(&rules, sample))
+            .unwrap_or_default(),
+    }
+}
+
+fn run_yara_rules(rules: &Path, sample: &Path) -> Vec<String> {
+    if !rules.exists() || command_missing("yara") {
+        return Vec::new();
+    }
+    let output = ProcessCommand::new("yara")
+        .arg("-r")
+        .arg(rules)
+        .arg(sample)
+        .output();
+    let Ok(output) = output else {
+        return Vec::new();
+    };
+    if !output.status.success() && output.status.code() != Some(1) {
+        return Vec::new();
+    }
+    parse_yara_hits(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_yara_hits(output: &str) -> Vec<String> {
+    let mut hits = output
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|rule| !rule.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    hits.sort();
+    hits.dedup();
+    hits
+}
+
+fn run_clamav(sample: &Path) -> ClamAvSummary {
+    if env_flag("WINSTDT_DISABLE_CLAMAV") || command_missing("clamscan") {
+        return ClamAvSummary {
+            status: "not_run".to_string(),
+            signature: None,
+        };
+    }
+    let output = ProcessCommand::new("clamscan")
+        .arg("--no-summary")
+        .arg(sample)
+        .output();
+    let Ok(output) = output else {
+        return ClamAvSummary {
+            status: "unavailable".to_string(),
+            signature: None,
+        };
+    };
+    match output.status.code() {
+        Some(0) => ClamAvSummary {
+            status: "clean".to_string(),
+            signature: None,
+        },
+        Some(1) => ClamAvSummary {
+            status: "infected".to_string(),
+            signature: parse_clamav_signature(&String::from_utf8_lossy(&output.stdout)),
+        },
+        _ => ClamAvSummary {
+            status: "error".to_string(),
+            signature: None,
+        },
+    }
+}
+
+fn parse_clamav_signature(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        line.rsplit_once(": ")
+            .and_then(|(_, verdict)| verdict.strip_suffix(" FOUND"))
+            .map(ToString::to_string)
+    })
+}
+
+fn run_vt_hash_lookup(sha256: &str) -> String {
+    let Some(api_key) = env::var("VIRUSTOTAL_API_KEY")
+        .ok()
+        .or_else(|| env::var("VT_API_KEY").ok())
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return "not_configured".to_string();
+    };
+    if command_missing("curl") {
+        return "unavailable".to_string();
+    }
+    let output = ProcessCommand::new("curl")
+        .arg("--silent")
+        .arg("--show-error")
+        .arg("--fail")
+        .arg("--max-time")
+        .arg("10")
+        .arg("--header")
+        .arg(format!("x-apikey: {api_key}"))
+        .arg(format!("https://www.virustotal.com/api/v3/files/{sha256}"))
+        .output();
+    let Ok(output) = output else {
+        return "unavailable".to_string();
+    };
+    if !output.status.success() {
+        return "unavailable".to_string();
+    }
+    summarize_vt_response(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn summarize_vt_response(response: &str) -> String {
+    let Ok(value) = serde_json::from_str::<Value>(response) else {
+        return "unavailable".to_string();
+    };
+    let Some(stats) = value
+        .pointer("/data/attributes/last_analysis_stats")
+        .and_then(Value::as_object)
+    else {
+        return "not_found".to_string();
+    };
+    let malicious = stats
+        .get("malicious")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let suspicious = stats
+        .get("suspicious")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let harmless = stats
+        .get("harmless")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    format!("found:malicious={malicious},suspicious={suspicious},harmless={harmless}")
+}
+
+fn command_missing(command: &str) -> bool {
+    ProcessCommand::new(command)
+        .arg("--version")
+        .output()
+        .is_err()
+}
+
+fn env_flag(name: &str) -> bool {
+    env::var(name)
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "yes" | "true" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn write_pretriage(report: PretriageReport, output: Option<&Path>) -> Result<()> {
@@ -975,6 +1517,46 @@ fn score_static_findings(
     (hypotheses, score)
 }
 
+fn score_scanner_findings(
+    mut hypotheses: Vec<String>,
+    mut score: f64,
+    yara: &YaraSummary,
+    clamav: &ClamAvSummary,
+    vt_lookup: &str,
+) -> (Vec<String>, f64) {
+    if !yara.fast_hits.is_empty() {
+        hypotheses.push("yara_fast_hit".to_string());
+        score += 40.0;
+    }
+    if !yara.deep_hits.is_empty() {
+        hypotheses.push("yara_deep_hit".to_string());
+        score += 25.0;
+    }
+    if clamav.status == "infected" {
+        hypotheses.push("clamav_detected".to_string());
+        score += 35.0;
+    }
+    if vt_lookup_malicious_count(vt_lookup) > 0 {
+        hypotheses.push("virustotal_hash_reputation".to_string());
+        score += 20.0;
+    }
+    hypotheses.sort();
+    hypotheses.dedup();
+    (hypotheses, score)
+}
+
+fn vt_lookup_malicious_count(vt_lookup: &str) -> u64 {
+    vt_lookup
+        .strip_prefix("found:")
+        .and_then(|stats| {
+            stats.split(',').find_map(|part| {
+                part.strip_prefix("malicious=")
+                    .and_then(|value| value.parse::<u64>().ok())
+            })
+        })
+        .unwrap_or_default()
+}
+
 fn validate_bundle(bundle: &Path, verify_hashes: bool) -> Result<ValidationReport> {
     if !bundle.is_dir() {
         return contract_error(format!(
@@ -1041,6 +1623,20 @@ fn validate_manifest_shape(manifest: &Manifest) -> Result<()> {
     if manifest.artifact_paths.trace_etl != TRACE_ETL_PATH {
         return contract_error(format!("artifact_paths.trace_etl must be {TRACE_ETL_PATH}"));
     }
+    if let Some(path) = &manifest.artifact_paths.report_json {
+        if path != REPORT_JSON_PATH {
+            return contract_error(format!(
+                "artifact_paths.report_json must be {REPORT_JSON_PATH}"
+            ));
+        }
+    }
+    if let Some(path) = &manifest.artifact_paths.report_html {
+        if path != REPORT_HTML_PATH {
+            return contract_error(format!(
+                "artifact_paths.report_html must be {REPORT_HTML_PATH}"
+            ));
+        }
+    }
     if manifest.integrity.hash_manifest != HASH_MANIFEST_PATH {
         return contract_error(format!(
             "integrity.hash_manifest must be {HASH_MANIFEST_PATH}"
@@ -1085,6 +1681,9 @@ fn validate_artifacts(bundle: &Path, manifest: &Manifest) -> Result<()> {
             ensure_non_empty(bundle.join(&manifest.artifact_paths.pcap))?;
             ensure_non_empty(bundle.join(&manifest.artifact_paths.trace_etl))?;
             ensure_non_empty(bundle.join(HASH_MANIFEST_PATH))?;
+            ensure_optional_artifact(bundle, manifest.artifact_paths.report_json.as_deref())?;
+            ensure_optional_artifact(bundle, manifest.artifact_paths.report_html.as_deref())?;
+            ensure_optional_artifact(bundle, manifest.artifact_paths.events_jsonl.as_deref())?;
         }
         SessionStatus::CaptureError => {
             if manifest.errors.iter().all(|error| error.stage != "capture") {
@@ -1096,6 +1695,13 @@ fn validate_artifacts(bundle: &Path, manifest: &Manifest) -> Result<()> {
         SessionStatus::AnalysisError | SessionStatus::Timeout => {}
     }
 
+    Ok(())
+}
+
+fn ensure_optional_artifact(bundle: &Path, relative: Option<&str>) -> Result<()> {
+    if let Some(relative) = relative {
+        ensure_non_empty(bundle.join(relative))?;
+    }
     Ok(())
 }
 
@@ -1194,6 +1800,16 @@ fn validate_hash_manifest(bundle: &Path, manifest: &Manifest) -> Result<()> {
         for relative in [SAMPLE_META_PATH, PCAP_PATH, TRACE_ETL_PATH] {
             validate_hash_entry(bundle, &expected, relative)?;
         }
+        for relative in [
+            manifest.artifact_paths.report_json.as_deref(),
+            manifest.artifact_paths.report_html.as_deref(),
+            manifest.artifact_paths.events_jsonl.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            validate_hash_entry(bundle, &expected, relative)?;
+        }
     } else {
         validate_hash_entry(bundle, &expected, SAMPLE_META_PATH)?;
         for relative in [PCAP_PATH, TRACE_ETL_PATH] {
@@ -1257,6 +1873,246 @@ fn print_report(bundle: &Path, report: &ValidationReport) {
     for warning in &report.warnings {
         println!("warning: {warning}");
     }
+}
+
+fn write_text_file(path: &Path, content: &str) -> Result<()> {
+    ensure_parent_dir(path)?;
+    fs::write(path, content).map_err(|source| ValidationError::Write {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+fn value_at(value: &Value, pointer: &str) -> Value {
+    value.pointer(pointer).cloned().unwrap_or(Value::Null)
+}
+
+fn now_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
+}
+
+fn residual_anti_evasion_risks() -> Vec<&'static str> {
+    vec![
+        "Timing/RDTSC side channels require manual anti-evasion validation.",
+        "CPUID timing side channels remain a residual risk.",
+        "Deep hypervisor introspection cannot be fully hidden by repo-level configuration.",
+        "Driver, kernel, and custom-QEMU findings require external engineering decisions.",
+    ]
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn bundle_dirs_older_than(root: &Path, cutoff: SystemTime) -> Result<Vec<PathBuf>> {
+    let mut bundles = Vec::new();
+    for entry in read_dir_sorted(root)? {
+        let path = entry.path();
+        if !path.is_dir() || !path.join(MANIFEST_PATH).is_file() {
+            continue;
+        }
+        let modified = path
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .map_err(|source| ValidationError::Read {
+                path: path.clone(),
+                source,
+            })?;
+        if modified <= cutoff {
+            bundles.push(path);
+        }
+    }
+    Ok(bundles)
+}
+
+fn free_gb(path: &Path) -> Result<f64> {
+    let output = ProcessCommand::new("df")
+        .arg("-Pk")
+        .arg(path)
+        .output()
+        .map_err(|source| ValidationError::Read {
+            path: PathBuf::from("df"),
+            source,
+        })?;
+    if !output.status.success() {
+        return Err(ValidationError::CommandFailed {
+            program: "df".to_string(),
+            args: vec!["-Pk".to_string(), path.display().to_string()],
+            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        });
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let Some(line) = text.lines().nth(1) else {
+        return contract_error("df output did not contain a filesystem line");
+    };
+    let available_kb = line
+        .split_whitespace()
+        .nth(3)
+        .and_then(|value| value.parse::<f64>().ok())
+        .ok_or_else(|| {
+            ValidationError::Contract("failed to parse df available space".to_string())
+        })?;
+    Ok(available_kb / 1024.0 / 1024.0)
+}
+
+fn mongo_health() -> MongoHealth {
+    let version = command_stdout("mongod", &["--version"])
+        .ok()
+        .and_then(|stdout| parse_mongod_version(&stdout));
+    let bind_addresses = command_stdout("ss", &["-ltnp"])
+        .ok()
+        .map(|stdout| parse_mongodb_binds(&stdout))
+        .unwrap_or_default();
+    let exposure_pass = if bind_addresses.is_empty() {
+        None
+    } else {
+        Some(mongodb_local_only(&bind_addresses))
+    };
+    let packages_held = command_stdout("apt-mark", &["showhold"])
+        .ok()
+        .map(|stdout| mongodb_packages_held(&stdout));
+    MongoHealth {
+        version,
+        bind_addresses,
+        packages_held,
+        exposure_pass,
+    }
+}
+
+fn command_stdout(program: &str, args: &[&str]) -> Result<String> {
+    let output = ProcessCommand::new(program)
+        .args(args)
+        .output()
+        .map_err(|source| ValidationError::Read {
+            path: PathBuf::from(program),
+            source,
+        })?;
+    if !output.status.success() {
+        return Err(ValidationError::CommandFailed {
+            program: program.to_string(),
+            args: args.iter().map(|arg| (*arg).to_string()).collect(),
+            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn parse_mongod_version(stdout: &str) -> Option<String> {
+    stdout.lines().find_map(|line| {
+        let trimmed = line.trim();
+        trimmed
+            .strip_prefix("db version v")
+            .or_else(|| trimmed.strip_prefix("db version "))
+            .map(|value| value.trim().to_string())
+    })
+}
+
+fn parse_mongodb_binds(stdout: &str) -> Vec<String> {
+    let mut binds = Vec::new();
+    for line in stdout.lines() {
+        if !line.contains(":27017") {
+            continue;
+        }
+        if let Some(address) = line.split_whitespace().nth(3) {
+            binds.push(address.to_string());
+        }
+    }
+    binds.sort();
+    binds.dedup();
+    binds
+}
+
+fn mongodb_local_only(bind_addresses: &[String]) -> bool {
+    bind_addresses
+        .iter()
+        .all(|address| address == "127.0.0.1:27017" || address == "[::1]:27017")
+}
+
+fn mongodb_packages_held(showhold_stdout: &str) -> bool {
+    const REQUIRED: &[&str] = &[
+        "mongodb-org",
+        "mongodb-org-database",
+        "mongodb-org-server",
+        "mongodb-org-mongos",
+        "mongodb-org-shell",
+        "mongodb-org-database-tools-extra",
+        "mongodb-org-tools",
+    ];
+    let held: HashSet<&str> = showhold_stdout.lines().map(str::trim).collect();
+    REQUIRED.iter().all(|package| held.contains(package))
+}
+
+fn bool_word(value: bool) -> &'static str {
+    if value { "true" } else { "false" }
+}
+
+fn handoff_health(root: &Path) -> Result<HandoffHealth> {
+    let mut health = HandoffHealth {
+        total_bundles: 0,
+        completed: 0,
+        capture_error: 0,
+        analysis_error: 0,
+        timeout: 0,
+        degraded: 0,
+    };
+    for entry in read_dir_sorted(root)? {
+        let path = entry.path();
+        if !path.is_dir() || !path.join(MANIFEST_PATH).is_file() {
+            continue;
+        }
+        let manifest: Manifest = read_json(&path.join(MANIFEST_PATH))?;
+        health.total_bundles += 1;
+        match manifest.status {
+            SessionStatus::Completed => health.completed += 1,
+            SessionStatus::CaptureError => health.capture_error += 1,
+            SessionStatus::AnalysisError => health.analysis_error += 1,
+            SessionStatus::Timeout => health.timeout += 1,
+        }
+        if manifest.telemetry.telemetry_degraded {
+            health.degraded += 1;
+        }
+    }
+    Ok(health)
+}
+
+fn golden_report_age_days(path: &Path) -> Result<u64> {
+    let modified = path
+        .metadata()
+        .and_then(|metadata| metadata.modified())
+        .map_err(|source| ValidationError::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    Ok(SystemTime::now()
+        .duration_since(modified)
+        .map(|duration| duration.as_secs() / 86_400)
+        .unwrap_or_default())
+}
+
+fn current_golden_decision(content: &str) -> Option<String> {
+    content.lines().find_map(|line| {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("| MVP gate decision |") {
+            return None;
+        }
+        let mut cells = trimmed
+            .trim_matches('|')
+            .split('|')
+            .map(str::trim)
+            .collect::<Vec<_>>();
+        if cells.len() < 2 {
+            return None;
+        }
+        Some(cells.swap_remove(1).to_string())
+    })
 }
 
 fn read_dir_sorted(path: &Path) -> Result<Vec<fs::DirEntry>> {
@@ -1400,6 +2256,129 @@ mod tests {
             report
                 .static_hypotheses
                 .contains(&"non_windows_or_non_pe_sample".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_scanner_outputs() {
+        assert_eq!(
+            parse_yara_hits("SuspiciousRule /tmp/sample.exe\nOtherRule /tmp/sample.exe\n"),
+            vec!["OtherRule".to_string(), "SuspiciousRule".to_string()]
+        );
+        assert_eq!(
+            parse_clamav_signature("/tmp/sample.exe: Win.Test.EICAR_HDB-1 FOUND"),
+            Some("Win.Test.EICAR_HDB-1".to_string())
+        );
+        assert_eq!(
+            summarize_vt_response(
+                r#"{"data":{"attributes":{"last_analysis_stats":{"malicious":2,"suspicious":1,"harmless":60}}}}"#
+            ),
+            "found:malicious=2,suspicious=1,harmless=60"
+        );
+    }
+
+    #[test]
+    fn scanner_findings_increase_static_score() {
+        let yara = YaraSummary {
+            fast_hits: vec!["FastRule".to_string()],
+            deep_hits: vec!["DeepRule".to_string()],
+        };
+        let clamav = ClamAvSummary {
+            status: "infected".to_string(),
+            signature: Some("Test.Signature".to_string()),
+        };
+        let (hypotheses, score) =
+            score_scanner_findings(Vec::new(), 0.0, &yara, &clamav, "found:malicious=3");
+
+        assert!(score >= 120.0);
+        assert!(hypotheses.contains(&"yara_fast_hit".to_string()));
+        assert!(hypotheses.contains(&"yara_deep_hit".to_string()));
+        assert!(hypotheses.contains(&"clamav_detected".to_string()));
+        assert!(hypotheses.contains(&"virustotal_hash_reputation".to_string()));
+    }
+
+    #[test]
+    fn report_bundle_writes_json_and_html_from_shared_model() {
+        let output_root =
+            env::temp_dir().join(format!("winstdt-report-test-{}", now_unix_seconds()));
+        fs::create_dir_all(&output_root).expect("create temp output");
+        let json_path = output_root.join("report.json");
+        let html_path = output_root.join("report.html");
+
+        report_bundle(
+            Path::new("tests/fixtures/handoff/valid_complete"),
+            &json_path,
+            &html_path,
+        )
+        .expect("report generation should pass");
+
+        let report: Value = read_json(&json_path).expect("read generated report");
+        assert_eq!(report["schema_version"], SCHEMA_VERSION);
+        assert_eq!(report["session_id"], "1001");
+        assert_eq!(report["validation"]["status"], "completed");
+        let html = read_to_string(&html_path).expect("read html report");
+        assert!(html.contains("WinST/DT Analyst Report"));
+        assert!(!html.contains("href=\"network/capture.pcapng\""));
+
+        fs::remove_dir_all(output_root).expect("remove temp output");
+    }
+
+    #[test]
+    fn mock_consume_watch_mode_requires_streaming_gate() {
+        let error = mock_consume(
+            Path::new("tests/fixtures/handoff"),
+            false,
+            Duration::from_millis(1),
+        )
+        .expect_err("watch mode should require streaming gate");
+        assert!(error.to_string().contains("WINSTDT_STREAMING_HANDOFF=1"));
+    }
+
+    #[test]
+    fn handoff_health_counts_fixture_statuses() {
+        let health = handoff_health(Path::new("tests/fixtures/handoff"))
+            .expect("fixture handoff root should scan");
+        assert_eq!(health.total_bundles, 3);
+        assert_eq!(health.completed, 3);
+        assert_eq!(health.degraded, 1);
+    }
+
+    #[test]
+    fn parses_mongodb_health_guardrails() {
+        let version = parse_mongod_version("db version v8.0.4\nBuild Info: {}\n")
+            .expect("version should parse");
+        assert_eq!(version, "8.0.4");
+
+        let ss_output = "LISTEN 0 4096 127.0.0.1:27017 0.0.0.0:* users:((\"mongod\",pid=1,fd=1))\n";
+        let binds = parse_mongodb_binds(ss_output);
+        assert_eq!(binds, vec!["127.0.0.1:27017".to_string()]);
+        assert!(mongodb_local_only(&binds));
+
+        let exposed = vec!["0.0.0.0:27017".to_string()];
+        assert!(!mongodb_local_only(&exposed));
+    }
+
+    #[test]
+    fn checks_mongodb_package_holds() {
+        let holds = "\
+mongodb-org
+mongodb-org-database
+mongodb-org-server
+mongodb-org-mongos
+mongodb-org-shell
+mongodb-org-database-tools-extra
+mongodb-org-tools
+";
+        assert!(mongodb_packages_held(holds));
+        assert!(!mongodb_packages_held("mongodb-org\nmongodb-org-server\n"));
+    }
+
+    #[test]
+    fn parses_current_golden_decision() {
+        let content = "| MVP gate decision | Accepted |\n";
+        assert_eq!(
+            current_golden_decision(content),
+            Some("Accepted".to_string())
         );
     }
 

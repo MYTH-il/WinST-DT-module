@@ -829,15 +829,15 @@ Impact on anti-VM and anti-sandbox priorities:
 
 Neutral.
 
-### 18. We Have a Golden Image, Not Yet a Complete CAPE Detonation Pipeline
+### 18. Golden Image Versus Complete CAPE Detonation Pipeline
 
 What we did:
 
 The setup successfully built/registered the VMCloak image and installed the project binaries and CAPE reporting overlay.
 
-What is still not done:
+Original gap:
 
-The setup completion does not yet prove:
+The setup completion alone did not prove:
 
 - the image is imported into CAPE machinery configuration
 - a clean CAPE snapshot exists and is used
@@ -849,11 +849,11 @@ The setup completion does not yet prove:
 
 Remediation so far:
 
-The setup script creates the host and golden-image prerequisites. Follow-on validation must cover CAPE machinery, guest agent staging, snapshotting, and end-to-end handoff.
+The setup script creates the host and golden-image prerequisites. Runtime closure on 2026-07-20 then validated CAPE machinery registration, snapshot existence, guest agent reachability, PCAP capture, ETW capture/retrieval, and final handoff validation for task `2`.
 
 Essential:
 
-Yes. This is the largest remaining MVP gap after host setup.
+Yes. This was the largest remaining MVP gap after host setup; it is now closed for benign validation with the caveat that the guest still carries legacy Cuckoo Agent 1.0 and should be upgraded before repeating the CAPE-controlled analyzer path.
 
 Pros:
 
@@ -863,11 +863,11 @@ Pros:
 Cons:
 
 - setup success can be mistaken for full sandbox readiness
-- orchestration bugs may still appear in CAPE task execution
+- legacy guest-agent behavior may still affect CAPE analyzer-log collection
 
 Impact on orchestration:
 
-High. Until CAPE task lifecycle validation passes, orchestration is not complete.
+Improved. CAPE task lifecycle validation now passes for benign runtime closure, but the guest agent should be modernized so analyzer logs are collected during the CAPE-controlled run rather than relying on direct guest-agent retrieval for ETW evidence.
 
 Impact on anti-VM and anti-sandbox priorities:
 
@@ -888,15 +888,18 @@ Essential for MVP setup and orchestration:
 - built Windows guest image
 - WinST/DT binaries and CAPE reporting overlay installation
 
-Essential but still pending validation:
+Essential runtime validation completed in this environment:
 
 - CAPE machinery configuration for `winstdt-win10-22h2`
-- clean snapshot/revert lifecycle
-- Windows guest ETW agent staging
+- active libvirt domain and `hardened-baseline` snapshot lifecycle
+- Windows guest ETW agent staging through the guest agent
 - ETL trace creation and retrieval
 - PCAP capture retrieval
 - final handoff bundle validation
-- golden image hardening report
+
+Essential but still pending manual validation:
+
+- filled golden image hardening report based on full anti-evasion evidence
 - al-khaser/Pafish strict-subset validation gate
 
 Deferred or non-blocking:
@@ -924,7 +927,7 @@ The image currently prioritizes successful automated build over realism. Skippin
 
 Evidence and telemetry:
 
-None of these setup shortcuts changed the locked telemetry design: raw ETW `.etl` handoff remains the MVP behavioral artifact. The setup only prepares the host and guest foundation. End-to-end validation must still prove `behavior/trace.etl`, `network/capture.pcapng`, `manifest.json`, and hash evidence are produced by a real CAPE task.
+None of these setup shortcuts changed the locked telemetry design: raw ETW `.etl` handoff remains the MVP behavioral artifact. Runtime validation on 2026-07-20 produced a completed handoff bundle for CAPE task `2` containing both `behavior/trace.etl` and `network/capture.pcapng`; the WinST/DT validator and mock consumer accepted the bundle.
 
 ## Recommendations
 
@@ -936,3 +939,103 @@ None of these setup shortcuts changed the locked telemetry design: raw ETW `.etl
 6. Add a golden image report for the current ISO and guest image before detonating real samples.
 7. Run al-khaser/Pafish strict-subset validation after post-VMCloak hardening, not before.
 8. Record any future hypervisor stealth work separately because it is outside the MVP no-custom-QEMU constraint.
+
+## Runtime Closure Attempt: Cached Sudo Missing
+
+Command attempted:
+
+```bash
+scripts/configure-cape-runtime.sh --execute
+```
+
+Observed result:
+
+```text
+passwordless/cached sudo is required. Run 'sudo -v' in a terminal, then retry.
+```
+
+Impact:
+
+The repo-owned runtime closure script is implemented, but this session could not
+apply host-level mutations under `/opt/CAPEv2`, libvirt, or systemd because no
+cached sudo credential was available. This blocks operational proof of CAPE
+service readiness, domain creation, snapshot validation, benign CAPE detonation,
+and real PCAP+ETL handoff validation in this environment.
+
+Remediation:
+
+Run `sudo -v` in an interactive terminal on the host, then rerun:
+
+```bash
+scripts/configure-cape-runtime.sh --execute
+```
+
+If the script fails after sudo is available, capture its full output in this
+audit and patch the failing idempotent step before rerunning.
+
+Status update:
+
+Resolved on 2026-07-20 by enabling passwordless sudo for this maintenance user.
+The runtime script was also changed to use `sudo -n true` instead of
+`sudo -n -v`, because this host policy allowed non-interactive command
+execution but not sudo credential validation.
+
+## Runtime Closure Remediations: 2026-07-20
+
+Observed issues:
+
+- Python `libvirt` bindings failed to build in CAPE's Poetry environment without `libvirt-dev` and the correct pkg-config search path.
+- MongoDB 8.0.26 refused to start on this `7.0.0-28-generic` kernel due the documented MongoDB 8.0 kernel incompatibility.
+- The VM initially received a non-configured DHCP address, so CAPE tried to contact the wrong endpoint.
+- Libvirt/AppArmor denied access to the original backing-image chain under `/srv/winstdt/images`.
+- CAPE looked for the reporting module section by file-stem name, `[winstdt_handoff_export]`, not the older normalized spelling.
+- The reporter's atomic temporary directory inherited `0700`, which blocked local validation tools from reading completed bundles.
+- The guest image contains the older Cuckoo Agent 1.0 endpoint set; direct execution requires `shell=1` for shell redirection and POST `/retrieve` for artifact retrieval.
+- CAPE's guest port is hardcoded to `8000`, so alternate-port modern-agent validation does not by itself change CAPE task execution.
+
+Remediations applied:
+
+- `scripts/configure-cape-runtime.sh` installs `libvirt-dev` and exports a pkg-config path that includes `/usr/lib64/pkgconfig`.
+- The script intentionally downgrades and holds MongoDB packages to `8.0.4` on kernel 6.19+/7.x hosts.
+- The script enforces `/etc/mongod.conf` local-only binding (`bindIp: 127.0.0.1`) and fails post-check if MongoDB listens on any non-localhost interface.
+- The script adds a static DHCP reservation for `winstdt-win10-22h2` at `10.66.0.101`.
+- The script creates a standalone qcow2 clone under `/var/lib/libvirt/images/winstdt` before defining the runtime domain.
+- The reporting overlay uses `[winstdt_handoff_export]` and is merged into `/opt/CAPEv2/conf/reporting.conf`.
+- The reporter normalizes finalized bundle directory/file permissions to `0755`/`0644`.
+- Guest validation evidence was retrieved through the available Cuckoo Agent 1.0 API.
+- `scripts/stage-cape-guest-agent.sh --execute` stages and validates CAPE agent `0.22` on alternate guest port `8001` with `execpy`, `logs`, and `subdir_upload`.
+
+Evidence:
+
+- `scripts/configure-cape-runtime.sh --execute` passed after the remediations.
+- CAPE task `2` completed and produced `dump.pcap`, exported as `network/capture.pcapng`.
+- ETW validation in the Windows guest produced a 13 MB `trace.etl` and valid `telemetry.json`.
+- The final `/srv/winstdt/handoff/2` bundle validated and `mock-consume` accepted it.
+- `compare-telemetry` reported `etw_enabled=4/6`, `telemetry_degraded=true`, and `decision=keep_capemon_enabled`.
+- Modern CAPE agent validation on port `8001` reported version `0.22` with required features present; primary port `8000` replacement remains a golden-image reseal task.
+
+MongoDB security decision:
+
+MongoDB `8.0.4` is intentionally pinned for this host. The reason is kernel
+compatibility, not preference: newer MongoDB 8.0 packages failed to start on the
+current Linux `7.0.0-28-generic` kernel. This is acceptable only for a local CAPE
+analysis host where MongoDB is bound to `127.0.0.1:27017` and is not exposed to
+guest VMs, LAN clients, or public interfaces.
+
+Residual risk:
+
+- MongoDB is behind the current patch level.
+- Security scanners may flag the pinned package.
+- Future CAPE/MongoDB behavior may diverge from latest supported MongoDB.
+
+Compensating controls:
+
+- localhost-only MongoDB binding
+- no guest/network exposure
+- explicit `apt-mark hold` on all MongoDB server/meta packages
+- `winstdt monitor-health` visibility for version, holds, bind address, and exposure
+
+Re-evaluate the pin when MongoDB publishes a fixed secure version compatible with
+kernel `6.19+`, the host moves below kernel `6.19`, CAPE no longer requires this
+MongoDB runtime, MongoDB is moved to a dedicated compatible-kernel VM, or the
+host becomes multi-user, network-exposed, or production-like.

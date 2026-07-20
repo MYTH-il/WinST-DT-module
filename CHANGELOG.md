@@ -31,6 +31,10 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
 - Added the `winstdt` CLI surface:
   - `validate-bundle`
   - `mock-consume`
+  - `report-bundle`
+  - `compare-telemetry`
+  - `cleanup-handoff`
+  - `monitor-health`
   - `pretriage`
   - `etw-agent start`
   - `etw-agent stop`
@@ -50,18 +54,34 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
   - missing/corrupt required artifacts fail the bundle
 - Added a mock C2 consumer that can watch and load completed handoff bundles.
 - Added static pre-triage support for file type, hashes, PE-like metadata, entropy, strings, and YARA tier hooks.
+- Wired static pre-triage to optional local scanner execution:
+  - `WINSTDT_YARA_FAST_RULES`
+  - `WINSTDT_YARA_DEEP_RULES`
+  - local `clamscan` unless `WINSTDT_DISABLE_CLAMAV=1`
+  - VirusTotal hash lookup only when `VIRUSTOTAL_API_KEY` or `VT_API_KEY` is set
 - Added unit tests in Rust for valid, degraded, invalid, pre-triage, and ETW metadata paths.
+- Added JSON/HTML analyst report generation from one shared report model.
+- Added telemetry comparison output that keeps `capemon` enabled unless configured coverage data supports disabling it.
+- Added handoff retention cleanup and local health monitoring commands.
 
 ### Schemas and Fixtures
 
 - Added `schemas/handoff_manifest.schema.json`.
 - Added `schemas/sample_meta.schema.json`.
+- Added `schemas/report.schema.json`.
+- Added `schemas/events.schema.json`.
+- Added `schemas/runtime_config.schema.json`.
 - Updated manifest contract for:
   - `telemetry.format = etl`
   - `telemetry.telemetry_degraded`
   - provider targeted/enabled/unavailable metadata
   - `etw_ti_status`
   - `artifact_paths.trace_etl`
+  - optional `artifact_paths.report_json`
+  - optional `artifact_paths.report_html`
+  - optional `artifact_paths.events_jsonl`
+  - optional `signature`
+  - optional `retention_policy`
 - Added handoff fixture bundles:
   - valid complete bundle
   - degraded optional-provider bundle
@@ -85,6 +105,8 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
   - raw ETW trace as `behavior/trace.etl`
   - `manifest.json`
   - `sample.meta.json`
+  - `report.json`
+  - `report.html`
   - `hashes.sha256`
 - Exporter maps missing PCAP or ETL to capture errors.
 - Exporter preserves degraded telemetry as completed when the trace itself is usable.
@@ -130,6 +152,18 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
   - RDTSC/timing checks
   - CPUID timing side channels
   - deep hypervisor introspection
+- Added benign Windows validation payload:
+  - `scripts/validation/Invoke-BenignDetonation.ps1`
+  - covers child process, file, registry, DNS, and simulated HTTP egress behavior
+- Added CAPE guest-agent staging/validation helper:
+  - `scripts/stage-cape-guest-agent.sh`
+  - validates current guest agent features
+  - stages current CAPE `agent.py` on alternate port `8001`
+  - leaves primary port `8000` replacement gated for golden-image reseal
+- Added anti-evasion evidence collection helper:
+  - `scripts/validation/Invoke-AntiEvasionCollection.ps1`
+  - records al-khaser/Pafish hashes, stdout/stderr, timeout status, and system context
+  - leaves strict-subset pass/fail mapping as an explicit manual report step
 
 ### Host and Guest Bootstrap
 
@@ -137,6 +171,19 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
   - `docs/host_guest_bootstrap.md`
 - Added the single maintained Ubuntu 24.04 setup script:
   - `scripts/setup-ubuntu24-host.sh`
+- Added CAPE runtime closure script:
+  - `scripts/configure-cape-runtime.sh`
+  - targets the live `/opt/CAPEv2` systemd checkout
+  - repairs stale Python `libvirt` bindings that require the wrong host
+    `libvirt.so` symbol version
+  - writes WinST/DT `kvm.conf` machine configuration
+  - installs the reporting overlay into the live CAPE tree
+  - creates/checks the libvirt domain and `hardened-baseline` snapshot
+  - supports gated multi-VM KVM config with `WINSTDT_VM_COUNT`
+  - refuses live egress activation without approval metadata
+  - pins MongoDB to `8.0.4` on kernel 6.19+/7.x hosts as an explicit compatibility exception
+  - enforces local-only MongoDB binding and package holds during readiness post-check
+  - restarts MongoDB/CAPE services and runs a readiness post-check
 - Implemented stable checklist-style setup dashboard:
   - `[✓]` done
   - `[-]` skipped
@@ -163,7 +210,7 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
 - Added host directory layout under `/srv/winstdt`.
 - Added install of built Linux and Windows Rust binaries to `/srv/winstdt/bin`.
 - Added install of ETW agent files to `/srv/winstdt/scripts/etw_agent`.
-- Added install of CAPE reporting overlay into `/opt/cape`.
+- Added install of CAPE reporting overlay into `/opt/CAPEv2`.
 
 ### Host Setup Repairs From This Device
 
@@ -194,7 +241,7 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
   - `allow virbr-winstdt`
   - setuid on `/usr/lib/qemu/qemu-bridge-helper`
 - Fixed CAPEv2 checkout handling:
-  - chown `/opt/cape` to the configured CAPE user
+  - chown `/opt/CAPEv2` to the configured CAPE user
   - run updates as CAPE user
   - use installer marker files under `/srv/winstdt/setup-state`
 - Changed VMCloak installation from broken PyPI path to GitHub checkout in a virtualenv:
@@ -264,19 +311,19 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
 - Verified VMCloak image registration.
 - Verified QCOW2 image existence and non-corrupt qemu-img status during setup debugging.
 - Verified isolated libvirt network active state.
+- Ran `scripts/configure-cape-runtime.sh --execute` successfully on 2026-07-20.
+- Verified CAPE machinery configuration and the `hardened-baseline` snapshot for `winstdt-win10-22h2`.
+- Ran CAPE benign validation task `2` and exported a real handoff bundle at `/srv/winstdt/handoff/2`.
+- Verified `network/capture.pcapng` and `behavior/trace.etl` are present together in the handoff bundle.
+- Ran the Rust bundle validator, mock C2 consumer, and telemetry comparison against the real bundle.
+- Ran guest hardening dry-run/apply and ETW validation inside the Windows guest.
+- Verified MongoDB `8.0.4` compatibility pin, package holds, localhost-only binding, and CAPE service readiness.
 
 ### Known Remaining MVP Work
 
-- Register and validate the Windows guest in CAPE machinery configuration.
-- Create/verify the clean CAPE snapshot/revert lifecycle.
-- Stage and validate the Windows ETW agent inside the guest.
-- Run benign end-to-end detonation through CAPE.
-- Prove `network/capture.pcapng` and `behavior/trace.etl` are both retrieved into a handoff bundle.
-- Run the Rust bundle validator against a real CAPE-produced bundle.
-- Run mock C2 consumer against the real bundle.
-- Complete post-VMCloak hardening pass.
 - Complete al-khaser/Pafish strict-subset gate.
-- Generate a golden image validation report for the current image and ISO.
+- Reseal the golden image with the modern CAPE agent on primary guest port `8000` so CAPE analyzer logs are collected during the CAPE-controlled run.
+- Fill the golden image validation report with al-khaser/Pafish evidence and formally accept or reject the image.
 
 ### Deliberate Deferrals
 

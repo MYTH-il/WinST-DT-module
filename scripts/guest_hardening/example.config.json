@@ -1,9 +1,9 @@
 {
   "build_id": "win10-22h2-vmcloak-example",
   "resources": {
-    "minimum_cpu_count": 4,
+    "minimum_cpu_count": 2,
     "minimum_ram_gb": 8,
-    "minimum_disk_gb": 80,
+    "minimum_disk_gb": 79,
     "minimum_free_disk_gb": 20
   },
   "identity": {
