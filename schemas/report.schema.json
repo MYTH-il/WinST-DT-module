@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winst-dt.local/schemas/report.schema.json",
+  "title": "WinST/DT Analyst Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "session_id",
+    "validation",
+    "sample",
+    "cape",
+    "telemetry",
+    "artifact_paths",
+    "enrichment",
+    "residual_anti_evasion_risks"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "generated_at_utc": { "type": "string", "format": "date-time" },
+    "generated_at_unix": { "type": "integer", "minimum": 0 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "validation": {
+      "type": "object",
+      "required": ["status", "telemetry_degraded", "warnings"],
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["completed", "capture_error", "analysis_error", "timeout"]
+        },
+        "telemetry_degraded": { "type": "boolean" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "sample": { "type": "object" },
+    "cape": { "type": "object" },
+    "telemetry": { "type": "object" },
+    "artifact_paths": { "type": "object" },
+    "enrichment": { "type": "object" },
+    "residual_anti_evasion_risks": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

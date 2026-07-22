@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "enabled": false,
+  "approval": {
+    "approval_id": "",
+    "owner": "",
+    "date": "",
+    "allowed_networks": [],
+    "rate_limit": ""
+  },
+  "route_profile": {
+    "mode": "operator_controlled",
+    "default_policy": "deny",
+    "notes": "WINSTDT_LIVE_EGRESS_ENABLED=1 is refused unless approval metadata is supplied."
+  }
+}

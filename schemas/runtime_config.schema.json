@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winst-dt.local/schemas/runtime_config.schema.json",
+  "title": "WinST/DT Runtime Gate Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "events_jsonl": { "$ref": "#/$defs/gate" },
+    "streaming_handoff": { "$ref": "#/$defs/gate" },
+    "windows11_variant": { "$ref": "#/$defs/gate" },
+    "commercial_multi_av": { "$ref": "#/$defs/gate" },
+    "hsm_signing": { "$ref": "#/$defs/gate" },
+    "multi_vm": {
+      "type": "object",
+      "required": ["enabled", "vm_count", "first_guest_ip"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "vm_count": { "type": "integer", "minimum": 1 },
+        "first_guest_ip": { "type": "string", "default": "10.66.0.101" }
+      }
+    },
+    "live_egress": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "approval_id": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "date": { "type": "string", "format": "date" },
+        "allowed_networks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "rate_limit": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

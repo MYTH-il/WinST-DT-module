@@ -81,7 +81,23 @@ A golden image is MVP-acceptable only when:
 
 ## Collection Helper
 
-Stage the validation tools into the guest, then run:
+Provide local compiled validation tool binaries and run the host wrapper:
+
+```bash
+scripts/validation/run-anti-evasion-validation.sh \
+  --al-khaser /path/to/al-khaser.exe \
+  --pafish /path/to/pafish.exe \
+  --execute
+```
+
+The wrapper stages the tools and collector through the CAPE guest agent, runs
+the collector, retrieves a zip archive, and extracts it under:
+
+```text
+docs/validation/evidence/<anti-evasion-run-id>/
+```
+
+To run manually inside the guest instead, stage the validation tools and run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
@@ -110,6 +126,19 @@ Expected outputs:
 The helper does not decide pass/fail automatically. The operator must map raw
 tool output into `docs/validation/golden_image_report_current.md` using the
 Strict Subset Gate categories above.
+
+After retrieval, draft the current report metadata and attachment paths:
+
+```bash
+scripts/validation/draft-golden-image-report.py \
+  docs/validation/evidence/<anti-evasion-run-id> \
+  --cape-git-ref "$(git -C /opt/CAPEv2 rev-parse --short HEAD)"
+```
+
+The draft intentionally leaves every strict-subset category as `Pending review`.
+Replace those cells with `Pass`, `Fail`, or `N/A` after inspecting the raw stdout
+and stderr. Do not mark the image accepted while any required row is pending or
+failed.
 
 ## Operating Assumptions
 

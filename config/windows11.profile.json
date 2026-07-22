@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "enabled": false,
+  "guest": {
+    "family": "windows11",
+    "edition": "Windows 11 Pro",
+    "arch": "x64"
+  },
+  "requirements": {
+    "tpm": "required",
+    "secure_boot": "required",
+    "vbs": "document_and_decide_per_image",
+    "minimum_ram_mb": 8192,
+    "minimum_vcpus": 4
+  },
+  "notes": [
+    "This profile is disabled by default and must not block the Windows 10 22H2 MVP path.",
+    "Enable only after CAPE/VMCloak/libvirt support for TPM, Secure Boot, and VBS has been validated on the host."
+  ]
+}

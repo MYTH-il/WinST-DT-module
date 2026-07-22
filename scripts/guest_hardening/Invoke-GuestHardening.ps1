@@ -84,6 +84,60 @@ function Assert-IdentityBaseline {
     }
 }
 
+function Assert-HardwareIdentityBaseline {
+    param($HardwareConfig)
+
+    if ($null -eq $HardwareConfig) {
+        $HardwareConfig = [pscustomobject]@{
+            blocked_terms = @("bochs", "qemu", "kvm", "virtualbox", "vmware", "xen", "hyper-v")
+        }
+    }
+
+    $computerSystem = Get-CimInstance Win32_ComputerSystem
+    $bios = Get-CimInstance Win32_BIOS
+    $baseBoard = Get-CimInstance Win32_BaseBoard
+    $diskDrives = Get-CimInstance Win32_DiskDrive
+
+    $values = @(
+        $computerSystem.Manufacturer,
+        $computerSystem.Model,
+        $bios.Manufacturer,
+        $bios.SMBIOSBIOSVersion,
+        $bios.Version,
+        $baseBoard.Manufacturer,
+        $baseBoard.Product
+    ) + ($diskDrives | ForEach-Object { @($_.Manufacturer, $_.Model, $_.SerialNumber) })
+
+    foreach ($value in $values) {
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            continue
+        }
+        foreach ($term in $HardwareConfig.blocked_terms) {
+            if ($value -match [regex]::Escape($term)) {
+                throw "Hardware identity contains blocked term '$term': $value"
+            }
+        }
+    }
+
+    Write-Step "hardware" "SMBIOS manufacturer=$($computerSystem.Manufacturer) model=$($computerSystem.Model) bios=$($bios.SMBIOSBIOSVersion)"
+}
+
+function Expand-SystemDisk {
+    if (-not $Apply) {
+        Write-Step "disk" "would expand C: partition to supported maximum size"
+        return
+    }
+
+    $partition = Get-Partition -DriveLetter C
+    $supported = Get-PartitionSupportedSize -DriveLetter C
+    if ($partition.Size -lt $supported.SizeMax) {
+        Resize-Partition -DriveLetter C -Size $supported.SizeMax
+        Write-Step "disk" "expanded C: to $([math]::Round($supported.SizeMax / 1GB, 2)) GB"
+    } else {
+        Write-Step "disk" "C: already uses supported maximum size"
+    }
+}
+
 function Ensure-DirectorySeed {
     param(
         [string]$Path,
@@ -123,9 +177,56 @@ function Invoke-ProfileSeeding {
     }
 }
 
+function Invoke-HumanInteractionWarmup {
+    param($WarmupConfig)
+
+    if ($null -eq $WarmupConfig) {
+        $WarmupConfig = [pscustomobject]@{
+            duration_seconds = 0
+        }
+    }
+
+    $durationSeconds = [int]$WarmupConfig.duration_seconds
+    if ($durationSeconds -lt 1) {
+        return
+    }
+
+    if (-not $Apply) {
+        Write-Step "interaction" "would run desktop warm-up for $durationSeconds seconds"
+        return
+    }
+
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class WinSTDTUser32 {
+    [DllImport("user32.dll")]
+    public static extern bool SetCursorPos(int x, int y);
+}
+"@
+
+    $shell = New-Object -ComObject WScript.Shell
+    $deadline = (Get-Date).AddSeconds($durationSeconds)
+    $counter = 0
+    while ((Get-Date) -lt $deadline) {
+        $x = 240 + (($counter * 37) % 720)
+        $y = 180 + (($counter * 29) % 420)
+        [WinSTDTUser32]::SetCursorPos($x, $y) | Out-Null
+        $shell.SendKeys("{SCROLLLOCK}")
+        Start-Sleep -Milliseconds 750
+        $shell.SendKeys("{SCROLLLOCK}")
+        Start-Sleep -Milliseconds 750
+        $counter++
+    }
+    Write-Step "interaction" "desktop warm-up completed for $durationSeconds seconds"
+}
+
+Expand-SystemDisk
 Assert-MinimumResourceBaseline -ResourceConfig $config.resources
 Assert-IdentityBaseline -IdentityConfig $config.identity
+Assert-HardwareIdentityBaseline -HardwareConfig $config.hardware
 Invoke-ProfileSeeding -ProfileConfig $config.profile
+Invoke-HumanInteractionWarmup -WarmupConfig $config.interaction
 
 Write-Host "Guest hardening checks completed."
 if (-not $Apply) {

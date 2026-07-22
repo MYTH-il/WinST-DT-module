@@ -60,6 +60,7 @@ logs/
 /captures/
 /images/
 /setup-state/
+/docs/validation/evidence/
 
 # OS metadata
 .DS_Store

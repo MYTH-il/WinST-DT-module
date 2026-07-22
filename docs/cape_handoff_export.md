@@ -52,7 +52,14 @@ The in-guest ETW agent should leave raw ETL at one of:
 storage/analyses/{task_id}/behavior/trace.etl
 storage/analyses/{task_id}/winstdt/trace.etl
 storage/analyses/{task_id}/files/behavior/trace.etl
+storage/analyses/{task_id}/aux/trace.etl
 ```
+
+The deployed WinST/DT CAPE auxiliary uploads through `aux/trace.etl`,
+`aux/telemetry.json`, and `aux/etw_state.json` because CAPE's resultserver
+whitelist permits `aux/<file>` uploads but rejects root-level files and nested
+custom directories. The reporting module normalizes the final handoff path back
+to `behavior/trace.etl`.
 
 It may also leave provider metadata at the matching `telemetry.json` path:
 

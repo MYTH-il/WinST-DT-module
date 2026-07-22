@@ -204,6 +204,7 @@ def build_package_inputs(
             analysis_path / "behavior" / "trace.etl",
             analysis_path / "winstdt" / "trace.etl",
             analysis_path / "files" / "behavior" / "trace.etl",
+            analysis_path / "aux" / "trace.etl",
             analysis_path / "trace.etl",
         ]
     )
@@ -215,6 +216,8 @@ def build_package_inputs(
             analysis_path / "behavior" / "telemetry.json",
             analysis_path / "winstdt" / "telemetry.json",
             analysis_path / "files" / "behavior" / "telemetry.json",
+            analysis_path / "aux" / "telemetry.json",
+            analysis_path / "telemetry.json",
         ]
     )
     return PackageInputs(pcap_source, etl_source, telemetry_sidecar, errors)

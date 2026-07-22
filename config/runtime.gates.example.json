@@ -1,0 +1,25 @@
+{
+  "events_jsonl": {
+    "enabled": false
+  },
+  "streaming_handoff": {
+    "enabled": false
+  },
+  "windows11_variant": {
+    "enabled": false
+  },
+  "commercial_multi_av": {
+    "enabled": false
+  },
+  "hsm_signing": {
+    "enabled": false
+  },
+  "multi_vm": {
+    "enabled": false,
+    "vm_count": 1,
+    "first_guest_ip": "10.66.0.101"
+  },
+  "live_egress": {
+    "enabled": false
+  }
+}

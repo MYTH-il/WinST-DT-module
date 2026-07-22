@@ -808,6 +808,10 @@ fn start_etw_capture(config: &EtwAgentConfig) -> Result<()> {
         "-ets",
         "-o",
         &config.trace_path.to_string_lossy(),
+        "-f",
+        "bincirc",
+        "-max",
+        "64",
     ])?;
 
     let mut providers_enabled = Vec::new();

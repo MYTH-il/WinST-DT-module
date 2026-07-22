@@ -849,11 +849,11 @@ The setup completion alone did not prove:
 
 Remediation so far:
 
-The setup script creates the host and golden-image prerequisites. Runtime closure on 2026-07-20 then validated CAPE machinery registration, snapshot existence, guest agent reachability, PCAP capture, ETW capture/retrieval, and final handoff validation for task `2`.
+The setup script creates the host and golden-image prerequisites. Runtime closure on 2026-07-20 then validated CAPE machinery registration, snapshot existence, guest agent reachability, PCAP capture, ETW capture/retrieval, and final handoff validation for task `11`.
 
 Essential:
 
-Yes. This was the largest remaining MVP gap after host setup; it is now closed for benign validation with the caveat that the guest still carries legacy Cuckoo Agent 1.0 and should be upgraded before repeating the CAPE-controlled analyzer path.
+Yes. This was the largest remaining MVP gap after host setup; it is now closed for benign validation. Task `11` ran through CAPE's analyzer path, stored analyzer logs, captured PCAP, uploaded ETW through CAPE's allowed `aux/` path, and exported a valid WinST/DT handoff bundle.
 
 Pros:
 
@@ -863,11 +863,11 @@ Pros:
 Cons:
 
 - setup success can be mistaken for full sandbox readiness
-- legacy guest-agent behavior may still affect CAPE analyzer-log collection
+- CAPE resultserver upload path restrictions must be respected for future auxiliary artifacts
 
 Impact on orchestration:
 
-Improved. CAPE task lifecycle validation now passes for benign runtime closure, but the guest agent should be modernized so analyzer logs are collected during the CAPE-controlled run rather than relying on direct guest-agent retrieval for ETW evidence.
+Improved. CAPE task lifecycle validation now passes for benign runtime closure with analyzer logs, CAPE PCAP, ETW upload, and reporting-module export all present in the same CAPE-controlled run.
 
 Impact on anti-VM and anti-sandbox priorities:
 
@@ -927,7 +927,7 @@ The image currently prioritizes successful automated build over realism. Skippin
 
 Evidence and telemetry:
 
-None of these setup shortcuts changed the locked telemetry design: raw ETW `.etl` handoff remains the MVP behavioral artifact. Runtime validation on 2026-07-20 produced a completed handoff bundle for CAPE task `2` containing both `behavior/trace.etl` and `network/capture.pcapng`; the WinST/DT validator and mock consumer accepted the bundle.
+None of these setup shortcuts changed the locked telemetry design: raw ETW `.etl` handoff remains the MVP behavioral artifact. Runtime validation on 2026-07-20 produced a completed handoff bundle for CAPE task `11` containing both `behavior/trace.etl` and `network/capture.pcapng`; the WinST/DT validator and mock consumer accepted the bundle.
 
 ## Recommendations
 
@@ -992,6 +992,7 @@ Observed issues:
 - The reporter's atomic temporary directory inherited `0700`, which blocked local validation tools from reading completed bundles.
 - The guest image contains the older Cuckoo Agent 1.0 endpoint set; direct execution requires `shell=1` for shell redirection and POST `/retrieve` for artifact retrieval.
 - CAPE's guest port is hardcoded to `8000`, so alternate-port modern-agent validation does not by itself change CAPE task execution.
+- CAPE resultserver rejects upload paths outside its whitelist; root-level `trace.etl` and nested `behavior/trace.etl` uploads were logged by the guest sender but not persisted by the host.
 
 Remediations applied:
 
@@ -1004,15 +1005,75 @@ Remediations applied:
 - The reporter normalizes finalized bundle directory/file permissions to `0755`/`0644`.
 - Guest validation evidence was retrieved through the available Cuckoo Agent 1.0 API.
 - `scripts/stage-cape-guest-agent.sh --execute` stages and validates CAPE agent `0.22` on alternate guest port `8001` with `execpy`, `logs`, and `subdir_upload`.
+- The ETW pickup auxiliary now uploads to allowed CAPE paths: `aux/trace.etl`, `aux/telemetry.json`, and `aux/etw_state.json`.
+- The reporting module reads those `aux/` artifacts and normalizes the final handoff bundle to `behavior/trace.etl`.
+- The ETW agent uses circular binary ETL output capped at 64 MB to remain under CAPE's upload-size limit.
 
 Evidence:
 
 - `scripts/configure-cape-runtime.sh --execute` passed after the remediations.
-- CAPE task `2` completed and produced `dump.pcap`, exported as `network/capture.pcapng`.
-- ETW validation in the Windows guest produced a 13 MB `trace.etl` and valid `telemetry.json`.
-- The final `/srv/winstdt/handoff/2` bundle validated and `mock-consume` accepted it.
+- CAPE task `11` completed and produced analyzer logs, `dump.pcap`, `aux/trace.etl`, `aux/telemetry.json`, and `aux/etw_state.json`.
+- Task `11` stored `aux/trace.etl` at 49,299,456 bytes, below CAPE's upload limit.
+- The final `/srv/winstdt/handoff/11` bundle contains `behavior/trace.etl` and `network/capture.pcapng`, validates as `Completed`, and `mock-consume` accepted it.
 - `compare-telemetry` reported `etw_enabled=4/6`, `telemetry_degraded=true`, and `decision=keep_capemon_enabled`.
-- Modern CAPE agent validation on port `8001` reported version `0.22` with required features present; primary port `8000` replacement remains a golden-image reseal task.
+- The current runtime snapshot is `hardened-baseline-antievasion-v1`.
+
+### Anti-Evasion Hardware Identity Remediation
+
+The first al-khaser/Pafish run on 2026-07-20 rejected the image because Windows
+reported obvious virtual hardware identity:
+
+- `Manufacturer=BOCHS_`
+- `Model=BXPC____`
+- `SystemBiosVersion=BOCHS - 1`
+- `QEMU HARDDISK`
+- about 80 GB disk capacity
+
+The proper remediation was applied at the libvirt/QEMU layer rather than by
+editing Windows registry artifacts after detection. `scripts/configure-cape-runtime.sh`
+now calls `scripts/harden-libvirt-domain.py`, which applies:
+
+- libvirt SMBIOS/sysinfo type 0/1/2/3 OEM values
+- `<smbios mode="sysinfo"/>`
+- KVM hidden state and Hyper-V vendor override
+- QEMU ACPI OEM ID/table ID machine options
+- virtio balloon removal
+- stable disk serial
+- libvirt `qemu:override` frontend properties for the emulated disk model
+- 160 GB minimum virtual disk sizing
+
+The Windows guest was power-cycled, the active overlay was resized, and
+`Invoke-GuestHardening.ps1 -Apply` expanded C: and seeded/warmed the user
+profile. The rerun evidence is:
+
+```text
+docs/validation/evidence/anti-evasion-20260720-223908/
+```
+
+Confirmed improvements:
+
+- Windows now reports `Manufacturer=DELL`, `Model=CBX3`.
+- BIOS string changed from `BOCHS - 1` to `DELL - 1`.
+- disk model changed from `QEMU HARDDISK` to `WDC WD5000LPCX-75VHAT0`.
+- C: expanded to about 160 GB with about 151 GB free.
+- al-khaser disk-size, `SetupDi_diskdrive`, and QEMU registry checks moved to
+  `GOOD`.
+- Pafish no longer emits Bochs/QEMU BIOS/disk markers.
+
+Remaining blockers:
+
+- al-khaser still reports mouse movement and lack-of-user-input failures.
+- Pafish reports fresh-boot uptime because validation ran soon after boot.
+- al-khaser still reports one ACPI table string failure.
+- al-khaser WMI fan and `Win32_SMBIOSMemory` inventory checks remain residual
+  platform realism findings.
+- CPUID hypervisor bit and RDTSC forced-VM-exit findings remain non-blocking
+  timing/deep-hypervisor residual risk under the no-custom-QEMU/kernel MVP
+  constraint.
+
+Next remediation should add a longer pre-detonation dwell and interaction
+workflow that runs immediately before analysis, then rerun al-khaser with a
+longer timeout.
 
 MongoDB security decision:
 

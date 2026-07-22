@@ -350,32 +350,32 @@ The consuming module's implementation only needs: (1) watch `/handoff/` for new 
 
 Status legend: `[x] implemented and validated`, `[~] implemented, pending runtime validation`, `[ ] not implemented`, `[gated] implemented behind disabled gate`.
 
-- [~] CAPEv2 rolling-release deployment using CAPE scripts
-- [~] Ubuntu 24.04/KVM/libvirt host
-- [~] Windows 10 22H2 x64 guest
-- [~] VMCloak-built golden image
+- [x] CAPEv2 rolling-release deployment using CAPE scripts
+- [x] Ubuntu 24.04/KVM/libvirt host
+- [x] Windows 10 22H2 x64 guest
+- [x] VMCloak-built golden image
 - [~] Post-VMCloak hardening pass
 - [~] Strict-subset al-khaser/Pafish validation gate
 - [x] No driver modification/re-signing
 - [x] No custom QEMU/kernel patching
-- [~] CAPE-native task queue/orchestration
-- [~] CAPE-native snapshot/revert lifecycle
-- [~] CAPE-native PCAP capture
-- [~] INetSim/FakeNet-NG simulated egress
+- [x] CAPE-native task queue/orchestration
+- [x] CAPE-native snapshot/revert lifecycle
+- [x] CAPE-native PCAP capture
+- [x] INetSim/FakeNet-NG simulated egress
 - [x] Static triage: type, hashes, PE metadata, entropy, strings
 - [gated] YARA fast/deep tiers
 - [gated] Local ClamAV aggregation
 - [gated] Optional non-blocking VirusTotal hash lookup
-- [~] CAPE `capemon` enabled during validation
+- [x] CAPE `capemon` enabled during validation
 - [x] Custom ETW trace-session capture agent
-- [~] Raw `.etl` behavioral telemetry handoff
+- [x] Raw `.etl` behavioral telemetry handoff
 - [x] Provider feature flags in manifest
 - [x] `telemetry_degraded` for missing analytical providers
 - [x] ETW-TI probe, non-blocking
 - [x] Batch handoff bundle
-- [~] `manifest.json`, `sample.meta.json`, PCAP, ETL trace, `hashes.sha256`
+- [x] `manifest.json`, `sample.meta.json`, PCAP, ETL trace, `hashes.sha256`
 - [x] Rust schema validator and mock C2 consumer
-- [~] Custom CAPE reporting/export module
+- [x] Custom CAPE reporting/export module
 - [x] Custom JSON/HTML report
 - [x] Basic SHA-256 evidence manifest
 

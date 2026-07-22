@@ -130,6 +130,30 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
 
 ### Guest Hardening and Anti-Evasion
 
+- Added host-side libvirt/QEMU anti-evasion hardening:
+  - `scripts/harden-libvirt-domain.py`
+  - injects SMBIOS/sysinfo OEM values
+  - sets KVM hidden state and Hyper-V vendor override
+  - adds QEMU ACPI OEM ID/table ID machine options
+  - disables the virtio balloon device
+  - sets stable disk serials
+  - uses libvirt `qemu:override` to present a non-QEMU disk model
+  - enforces a 160 GB minimum VM disk size
+- Updated the runtime snapshot default to `hardened-baseline-antievasion-v1`.
+- Expanded guest hardening:
+  - requires 4 logical CPUs, 8 GB RAM, 150 GB disk, and 50 GB free space
+  - expands C: to the supported maximum size during apply
+  - rejects obvious VM hardware strings
+  - seeds profile directories and runs a desktop warm-up
+- Re-ran al-khaser/Pafish evidence collection after hardware identity remediation:
+  - evidence: `docs/validation/evidence/anti-evasion-20260720-223908/`
+  - Windows now reports `Manufacturer=DELL`, `Model=CBX3`
+  - disk now reports `WDC WD5000LPCX-75VHAT0`
+  - C: expanded to about 160 GB
+  - al-khaser disk-size, `SetupDi_diskdrive`, and QEMU registry checks are now `GOOD`
+  - Pafish no longer emits Bochs/QEMU BIOS/disk markers
+  - remaining required blockers: user-input/mouse evidence, fresh-boot uptime, and one al-khaser ACPI table string finding
+  - remaining non-blocking residuals: CPUID hypervisor bit, RDTSC forced-VM-exit timing, WMI fan, and WMI `Win32_SMBIOSMemory` inventory realism
 - Added guest hardening scaffold:
   - `scripts/guest_hardening/Invoke-GuestHardening.ps1`
   - `scripts/guest_hardening/example.config.json`
@@ -164,6 +188,34 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
   - `scripts/validation/Invoke-AntiEvasionCollection.ps1`
   - records al-khaser/Pafish hashes, stdout/stderr, timeout status, and system context
   - leaves strict-subset pass/fail mapping as an explicit manual report step
+- Added host-side anti-evasion validation wrapper:
+  - `scripts/validation/run-anti-evasion-validation.sh`
+  - stages local al-khaser/Pafish binaries through the CAPE guest agent
+  - runs the in-guest collector
+  - retrieves the zipped evidence under `docs/validation/evidence/`
+- Added report drafting helper:
+  - `scripts/validation/draft-golden-image-report.py`
+  - pre-fills metadata, evidence paths, tool hashes, and runtime proof references
+  - intentionally leaves strict-subset pass/fail rows pending for human review
+- Built Pafish from source for anti-evasion validation:
+  - source checkout: `/srv/winstdt/tools/pafish`
+  - upstream commit: `b497899ff355ea7b9ecc1f5cd34a9fd1def02aec`
+  - built standard x86/x64 binaries with MinGW
+  - built a local WinST/DT unattended x64 validation binary that disables Pafish interactive RTT checks and final keypress wait
+  - unattended binary: `/srv/winstdt/tools/bin/pafish64-winstdt-unattended.exe`
+  - unattended SHA-256: `d387c969a0933250fd79258819a5c92284db2b6f36be24ded3b5429ea74c3f9b`
+- Ran initial anti-evasion evidence collection in the Windows guest:
+  - initial rejected evidence run: `docs/validation/evidence/anti-evasion-20260720-214438/`
+  - downloaded al-khaser release `v1.1.0` x64 archive from GitHub releases
+  - al-khaser archive SHA-256: `c38383b12b378e50d0a82b65290a9244c2bf5867ff1ab7fcfac6d399ae820b2e`
+  - extracted al-khaser EXE SHA-256: `0cd8a40ff7ceef9c1368446d6ead91549681e88fdfa0f9f5a63c03fe38420baf`
+  - installed Microsoft VC++ x64 runtime in the live guest because the release EXE requires `MSVCP140.dll`
+  - al-khaser release EXE executed with scoped MVP-relevant arguments and produced stdout plus `log.txt`
+  - Pafish found required failures in BOCHS SMBIOS/model, BOCHS BIOS string, and QEMU SCSI identifier.
+  - al-khaser found required failures in WMI/core/disk/device/ACPI/user-interaction categories.
+  - Pafish found non-blocking residual failures in RDTSC/CPUID hypervisor checks.
+  - `docs/validation/golden_image_report_current.md` remains rejected with concrete al-khaser and Pafish findings.
+- Cloned al-khaser source under `/srv/winstdt/tools/al-khaser` at commit `f0e5559073fe02c4f50cc8c3ed8d5b302a6a0659`; local Linux and guest environments do not currently have MSBuild/NuGet, so a source build remains pending Visual Studio Build Tools if mappable release output is insufficient.
 
 ### Host and Guest Bootstrap
 
@@ -318,11 +370,21 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
 - Ran the Rust bundle validator, mock C2 consumer, and telemetry comparison against the real bundle.
 - Ran guest hardening dry-run/apply and ETW validation inside the Windows guest.
 - Verified MongoDB `8.0.4` compatibility pin, package holds, localhost-only binding, and CAPE service readiness.
+- Capped the Windows ETW agent trace session at 64 MB using circular binary ETL output so CAPE result uploads stay below the configured upload limit.
+- Resealed the runtime snapshot as `hardened-baseline-agent022-etw-cap64`.
+- Later anti-evasion remediation resealed the current runtime snapshot as
+  `hardened-baseline-antievasion-v1`.
+- Fixed WinST/DT ETW pickup to upload through CAPE's allowed `aux/` result path and taught the reporting module to normalize those artifacts into the handoff contract.
+- Ran CAPE benign validation task `11` through the full analyzer path:
+  - CAPE stored `aux/trace.etl` at 49,299,456 bytes, `aux/telemetry.json`, `aux/etw_state.json`, and `dump.pcap`.
+  - WinST/DT exported `/srv/winstdt/handoff/11` with `behavior/trace.etl`, `network/capture.pcapng`, `manifest.json`, `sample.meta.json`, `report.json`, `report.html`, and `hashes.sha256`.
+  - `/srv/winstdt/bin/winstdt validate-bundle /srv/winstdt/handoff/11` accepted the bundle with `status=Completed`.
+  - `/srv/winstdt/bin/winstdt mock-consume /srv/winstdt/handoff --once` accepted the completed task `11` bundle.
+  - `compare-telemetry` reported `etw_enabled=4/6`, `telemetry_degraded=true`, and `decision=keep_capemon_enabled`.
 
 ### Known Remaining MVP Work
 
 - Complete al-khaser/Pafish strict-subset gate.
-- Reseal the golden image with the modern CAPE agent on primary guest port `8000` so CAPE analyzer logs are collected during the CAPE-controlled run.
 - Fill the golden image validation report with al-khaser/Pafish evidence and formally accept or reject the image.
 
 ### Deliberate Deferrals

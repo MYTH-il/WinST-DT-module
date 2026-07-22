@@ -143,22 +143,63 @@ scripts/stage-cape-guest-agent.sh --execute
 ```
 
 The script probes the current port `8000` agent and, when needed, stages the
-current `/opt/CAPEv2/agent/agent.py` on alternate port `8001`. This proves the
-guest can run the modern CAPE agent with `execpy`, `logs`, and `subdir_upload`
-without killing the only working control channel. CAPE itself still uses
-hardcoded guest port `8000`, so primary replacement must be done while resealing
-the golden image rather than by changing CAPE configuration.
+current `/opt/CAPEv2/agent/agent.py` on alternate port `8001`. CAPE itself uses
+guest port `8000`, so any durable primary-agent replacement must be captured in
+the runtime snapshot. The current anti-evasion remediation snapshot is
+`hardened-baseline-antievasion-v1`.
+
+The CAPE runtime script applies the host-side anti-evasion profile before
+snapshot validation. That profile sets libvirt SMBIOS/sysinfo fields, masks the
+KVM CPUID leaf where supported, sets a Hyper-V vendor override, configures ACPI
+OEM ID/table ID through QEMU machine options, removes the virtio balloon device,
+assigns a stable disk serial, and uses libvirt `qemu:override` to present a
+non-QEMU disk model. These are standard libvirt/QEMU configuration changes; they
+are not custom QEMU or kernel patches.
+
+After host-side VM identity changes, power the guest off and start it again
+before collecting evidence. Inside the guest, run
+`scripts/guest_hardening/Invoke-GuestHardening.ps1 -Apply` to expand C: to the
+new virtual disk size, seed profile directories, and perform the desktop
+warm-up.
 
 The benign detonation validation payload is
 `scripts/validation/Invoke-BenignDetonation.ps1`. Submit it through CAPE after
 ETW validation; it exercises child process, file, registry, DNS, and simulated
 HTTP egress behavior.
 
-For al-khaser/Pafish evidence collection, stage those tool binaries into the
-guest and run `Invoke-AntiEvasionCollection.ps1`. It records tool hashes, stdout,
-stderr, timeout status, and system context under
-`C:\ProgramData\WinSTDT\validation\anti-evasion\` for manual strict-subset
-mapping into the golden image report.
+The current benign runtime proof is CAPE task `11`. It produced analyzer logs,
+`dump.pcap`, `aux/trace.etl`, `aux/telemetry.json`, and `aux/etw_state.json`;
+the reporting module exported `/srv/winstdt/handoff/11` with
+`behavior/trace.etl` and `network/capture.pcapng`, and the Rust validator plus
+mock C2 consumer accepted the bundle.
+
+For al-khaser/Pafish evidence collection, provide local compiled tool binaries
+and run the host wrapper:
+
+```bash
+scripts/validation/run-anti-evasion-validation.sh \
+  --al-khaser /path/to/al-khaser.exe \
+  --pafish /path/to/pafish.exe \
+  --execute
+```
+
+The wrapper stages both tools and `Invoke-AntiEvasionCollection.ps1` through the
+CAPE guest agent, runs them in the guest, zips the evidence, and retrieves it
+under `docs/validation/evidence/`. The guest-side collector records tool hashes,
+stdout, stderr, timeout status, and system context under
+`C:\ProgramData\WinSTDT\validation\anti-evasion\`.
+
+Draft a current report from the retrieved evidence:
+
+```bash
+scripts/validation/draft-golden-image-report.py \
+  docs/validation/evidence/<anti-evasion-run-id> \
+  --cape-git-ref "$(git -C /opt/CAPEv2 rev-parse --short HEAD)"
+```
+
+The draft keeps every strict-subset category as `Pending review`. Fill each row
+from the raw al-khaser/Pafish output and accept the image only if no required
+category fails.
 
 Static pre-triage uses local scanners when configured:
 

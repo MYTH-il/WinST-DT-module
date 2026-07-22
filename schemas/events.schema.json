@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winst-dt.local/schemas/events.schema.json",
+  "title": "WinST/DT Structured Events JSONL Record",
+  "type": "object",
+  "required": ["schema_version", "session_id", "timestamp_utc", "source", "event_type"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "session_id": { "type": "string", "minLength": 1 },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "string",
+      "enum": ["etl_parser", "capemon", "cape", "pretriage"]
+    },
+    "event_type": { "type": "string", "minLength": 1 },
+    "process": { "type": "object" },
+    "file": { "type": "object" },
+    "registry": { "type": "object" },
+    "network": { "type": "object" },
+    "raw": { "type": "object" }
+  }
+}
