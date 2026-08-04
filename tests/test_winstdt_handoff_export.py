@@ -56,6 +56,11 @@ class WinstdtHandoffExportTests(unittest.TestCase):
         behavior = self.analysis_path / "behavior"
         behavior.mkdir()
         (behavior / "trace.etl").write_bytes(b"etl bytes")
+        clock_root = self.tempdir / "clock-sync"
+        clock_root.mkdir()
+        (clock_root / "42.json").write_text('{"schema_version":"1.0"}', encoding="utf-8")
+        os.environ["WINSTDT_CLOCK_SYNC_ROOT"] = str(clock_root)
+        self.addCleanup(os.environ.pop, "WINSTDT_CLOCK_SYNC_ROOT", None)
         (behavior / "telemetry.json").write_text(
             json.dumps(
                 {
@@ -91,6 +96,8 @@ class WinstdtHandoffExportTests(unittest.TestCase):
         self.assertEqual(manifest["artifact_paths"]["report_html"], "report.html")
         self.assertTrue((bundle / "network" / "capture.pcapng").is_file())
         self.assertTrue((bundle / "behavior" / "trace.etl").is_file())
+        self.assertEqual(manifest["artifact_paths"]["clock_sync"], "behavior/clock-sync.json")
+        self.assertTrue((bundle / "behavior" / "clock-sync.json").is_file())
         self.assertFalse((bundle / "behavior" / "events.jsonl").exists())
         report = json.loads((bundle / "report.json").read_text(encoding="utf-8"))
         self.assertEqual(report["session_id"], "42")

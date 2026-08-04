@@ -189,6 +189,7 @@
         "report_json": { "const": "report.json" },
         "report_html": { "const": "report.html" },
         "events_jsonl": { "const": "behavior/events.jsonl" }
+        ,"clock_sync": { "const": "behavior/clock-sync.json" }
       }
     },
     "integrity": {

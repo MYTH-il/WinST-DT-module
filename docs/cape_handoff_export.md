@@ -61,6 +61,28 @@ whitelist permits `aux/<file>` uploads but rejects root-level files and nested
 custom directories. The reporting module normalizes the final handoff path back
 to `behavior/trace.etl`.
 
+## Host/guest clock alignment
+
+Before each detonation, while the restored guest agent is reachable, measure its
+UTC offset from the CAPE host (whose clock timestamps the PCAP):
+
+```bash
+scripts/measure-clock-offset.py \
+  --phase start --output /srv/winstdt/clock-sync/{task_id}.json
+# Repeat near detonation shutdown:
+scripts/measure-clock-offset.py \
+  --phase end --output /srv/winstdt/clock-sync/{task_id}.json
+```
+
+The utility performs repeated request/response midpoint measurements and selects
+the sample with the lowest round-trip time. `guest_minus_host_ns` is defined as
+guest UTC minus host UTC. A consumer maps an ETW timestamp to the PCAP timeline
+with `host_ns = etw_guest_ns - guest_minus_host_ns`. Consumers must retain the
+published `uncertainty_ns` when deciding whether two events are simultaneous.
+The reporting exporter includes this as the hashed artifact
+`behavior/clock-sync.json`. Measurements exceeding the default 25 ms
+uncertainty gate exit with status 2 and must not be treated as precise.
+
 It may also leave provider metadata at the matching `telemetry.json` path:
 
 ```json
@@ -130,8 +152,10 @@ summary export while keeping raw `behavior/trace.etl` authoritative. Local
 signing records signature metadata in `manifest.json.signature`; HSM signing is
 an interface only and fails closed until a real signer adapter is configured.
 
-Live egress is refused by `scripts/configure-cape-runtime.sh` unless approval
-metadata is present:
+**Controlled live egress is not currently implemented or available and remains
+under development.** The variables below are approval-metadata scaffolding, not
+an operational route. `scripts/configure-cape-runtime.sh` refuses the gated
+configuration unless all metadata is present:
 
 ```text
 WINSTDT_LIVE_EGRESS_APPROVAL_ID
@@ -140,3 +164,8 @@ WINSTDT_LIVE_EGRESS_DATE
 WINSTDT_LIVE_EGRESS_ALLOWED_NETWORKS
 WINSTDT_LIVE_EGRESS_RATE_LIMIT
 ```
+
+Even when the metadata gate passes, the script does not create an egress
+gateway, enforce an allowlist, or prove containment. Malware analyses must use
+isolated/drop or simulated-service routing until the controlled-egress design
+has been implemented and validated end to end. See `docs/current_stack.md`.
