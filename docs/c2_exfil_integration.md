@@ -24,3 +24,25 @@ git subtree pull --prefix integrations/c2-exfil \
 ```
 
 Never place WinST/DT-specific changes inside the subtree.
+
+## Completion status
+
+The integration is sound for pinned, fixture-free network-only processing: the
+upstream suite passes, immutable task 7 was consumed successfully, inputs and
+outputs are hashed, and derived output is separated from the handoff. Full
+integration is not yet accepted. Remaining work is:
+
+- interpolate start/end guest clock measurements instead of averaging offsets;
+- corroborate classified capemon events with ETL rather than relying on
+  capemon alone;
+- pass Suricata and decrypted-traffic metadata through an upstream-supported
+  interface;
+- validate the static-prior extractor against known CAPA/CAPE IOC fixtures;
+- validate the emitted result bundle against a dedicated schema; and
+- complete one clock-valid run with non-empty real access events and a
+  demonstrated host/network correlation inside the 15-second window.
+
+The upstream repository currently has no license file in the pinned tree.
+Repository visibility alone does not grant redistribution rights; retain the
+project owner's explicit authorization and confirm licensing before distributing
+WinST/DT builds containing the subtree.

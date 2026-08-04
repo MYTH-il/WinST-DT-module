@@ -11,6 +11,21 @@ is not a claim of parity with every commercial malware-analysis platform. See
 [Current stack and capability status](docs/current_stack.md) for the precise
 deployed coverage and known gaps.
 
+## C2/Exfiltration module acknowledgment
+
+WinST/DT embeds the **C2-Exfil-E-Rakshak** network analysis module from
+[demistifying/C2-Exfil-E-Rakshak](https://github.com/demistifying/C2-Exfil-E-Rakshak)
+as a pinned Git subtree. The upstream project was created and is maintained by
+[Raghav Shrivastav (`demistifying`)](https://github.com/demistifying). We are
+grateful for his C2/exfiltration detection, correlation, provenance, and IOC
+export work; WinST/DT does not claim authorship of that module.
+
+Questions, doubts, bug reports, or design discussions about the upstream module
+should be checked against its [actual repository and documentation](https://github.com/demistifying/C2-Exfil-E-Rakshak)
+first. WinST/DT-specific questions—CAPE handoff generation, clock correction,
+adapter behavior, deployment, and derived-result storage—belong to this
+repository. The embedded copy is pinned and may lag upstream.
+
 ## Important network limitation
 
 **Controlled live-egress testing is not currently implemented or available.**
@@ -57,14 +72,16 @@ A successful CAPE task can produce:
     network/capture.pcapng
     behavior/trace.etl
     behavior/clock-sync.json    # only when a valid per-task measurement exists
+    behavior/access_events.json # classified, clock-corrected C2 input
     report.json
     report.html
     hashes.sha256
 ```
 
-The raw ETL remains authoritative. A downstream consumer that expects
-classified host-access JSON needs an ETL/CAPE normalization adapter; raw `.etl`
-is not interchangeable with an `access_events.json` interface.
+The raw ETL remains authoritative. CAPE/capemon calls are normalized into the
+analyzer's classified `access_events.json` contract when clock quality permits;
+raw `.etl` is not interchangeable with that interface. ETL corroboration and a
+clock-valid end-to-end host/network acceptance run remain pending.
 
 ## Setup
 
@@ -131,6 +148,7 @@ that no unpacked payload existed.
 - [Current stack and capability status](docs/current_stack.md)
 - [Host and Windows guest bootstrap](docs/host_guest_bootstrap.md)
 - [CAPE handoff export](docs/cape_handoff_export.md)
+- [C2/Exfiltration integration](docs/c2_exfil_integration.md)
 - [Anti-evasion qualification gate](docs/validation/anti_evasion_gate.md)
 - [Implementation plan](WinST-DT-Implementation-Plan.md)
 - [Evaluation report](WinST-DT-Evaluation-Report.md)

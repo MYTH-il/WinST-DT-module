@@ -178,6 +178,13 @@ PCAP. It produced one weak network beacon finding for `5.149.249.242:80` in
 used and host/network correlation was disabled. This validates network-only
 integration, not the pending clock-corrected host/network acceptance case.
 
+The host has approximately 400 GiB free on the filesystem containing
+`/srv/winstdt` and `/var/lib/libvirt/images`; existing libvirt images occupy
+about 28 GiB. This is sufficient for a small gateway disk. A 20–32 GiB
+thin-provisioned gateway disk is recommended. The host has 15 GiB RAM and about
+8.5 GiB presently available, so assign the gateway 1–2 GiB and prevent it from
+overlapping a Windows full-memory workload through the task scheduler.
+
 ## Network modes and interpretation
 
 ### Available now
