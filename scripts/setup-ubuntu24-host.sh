@@ -137,7 +137,10 @@ done
 
 ensure_log_dir() {
   if [ "$EXECUTE" -eq 1 ]; then
-    if ! sudo -n -v 2>/dev/null; then
+    # Validate non-interactive command execution directly. `sudo -n -v` may
+    # still request authentication for a timestamp refresh even when the user
+    # has a matching NOPASSWD rule, producing a false negative.
+    if ! sudo -n true 2>/dev/null; then
       printf 'sudo credentials are required before setup can run unattended.\n' >&2
       printf 'Run this in your terminal first, then rerun setup:\n\n' >&2
       printf '  sudo -v\n\n' >&2
@@ -411,7 +414,7 @@ patch_vmcloak_large_wim_iso() {
     "$VMCLOAK_DIR/vmcloak/abstract.py" \
     "$VMCLOAK_DIR/venv/lib/python3.12/site-packages/vmcloak/abstract.py"; do
     if [ -f "$target" ]; then
-      run_shell_logged "$key" "grep -q -- '-allow-limited-size' \"$target\" || sed -i '/\"-no-emul-boot\",/a\\        \"-allow-limited-size\",' \"$target\"" || return 1
+      run_root_shell_logged "$key" "grep -q -- '-allow-limited-size' \"$target\" || sed -i '/\"-no-emul-boot\",/a\\        \"-allow-limited-size\",' \"$target\"" || return 1
     fi
   done
 }
@@ -423,8 +426,8 @@ patch_vmcloak_win10_22h2_unattend() {
     "$VMCLOAK_DIR/vmcloak/data/win10/autounattend.xml" \
     "$VMCLOAK_DIR/venv/lib/python3.12/site-packages/vmcloak/data/win10/autounattend.xml"; do
     if [ -f "$target" ]; then
-      run_shell_logged "$key" "sed -i '/<ShowWindowsLive>false<\\/ShowWindowsLive>/d' \"$target\"" || return 1
-      run_shell_logged "$key" "sed -i '/<component name=\"Security-Malware-Windows-Defender\"/,/<\\/component>/d' \"$target\"" || return 1
+      run_root_shell_logged "$key" "sed -i '/<ShowWindowsLive>false<\\/ShowWindowsLive>/d' \"$target\"" || return 1
+      run_root_shell_logged "$key" "sed -i '/<component name=\"Security-Malware-Windows-Defender\"/,/<\\/component>/d' \"$target\"" || return 1
     fi
   done
 }
@@ -753,7 +756,7 @@ phase_cape() {
       fi
     fi
   fi
-  run_root_shell_logged "$key" "git -C \"$CAPE_DIR\" rev-parse HEAD > \"$CAPE_DIR/WINSTDT_CAPE_GIT_REF\""
+  run_root_shell_logged "$key" "sudo -u \"$CAPE_USER\" git -C \"$CAPE_DIR\" rev-parse HEAD > \"$CAPE_DIR/WINSTDT_CAPE_GIT_REF\""
 }
 
 phase_vmcloak() {

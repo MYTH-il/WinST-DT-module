@@ -34,6 +34,7 @@ SCHEMA_VERSION = "1.0"
 MODULE_VERSION = "0.1.0"
 TRACE_ETL_PATH = "behavior/trace.etl"
 PCAP_PATH = "network/capture.pcapng"
+CLOCK_SYNC_PATH = "behavior/clock-sync.json"
 HASH_MANIFEST_PATH = "hashes.sha256"
 REPORT_JSON_PATH = "report.json"
 REPORT_HTML_PATH = "report.html"
@@ -133,6 +134,7 @@ def export_handoff_bundle(
         package = build_package_inputs(results, analysis_path, options)
         copy_if_present(package.pcap_source, tmp_bundle / PCAP_PATH, options)
         copy_if_present(package.etl_source, tmp_bundle / TRACE_ETL_PATH, options)
+        copy_if_present(package.clock_sync_source, tmp_bundle / CLOCK_SYNC_PATH, options)
 
         sample_meta = build_sample_meta(results)
         write_json(tmp_bundle / "sample.meta.json", sample_meta)
@@ -182,6 +184,7 @@ class PackageInputs:
     etl_source: Path | None
     telemetry_sidecar: dict[str, Any]
     errors: list[dict[str, str]]
+    clock_sync_source: Path | None = None
 
 
 def build_package_inputs(
@@ -220,7 +223,12 @@ def build_package_inputs(
             analysis_path / "telemetry.json",
         ]
     )
-    return PackageInputs(pcap_source, etl_source, telemetry_sidecar, errors)
+    task_id = get_task_id(results)
+    clock_root = Path(os.environ.get("WINSTDT_CLOCK_SYNC_ROOT", "/srv/winstdt/clock-sync"))
+    clock_sync_source = first_existing(
+        [analysis_path / "aux" / "clock-sync.json", clock_root / f"{task_id}.json"]
+    )
+    return PackageInputs(pcap_source, etl_source, telemetry_sidecar, errors, clock_sync_source)
 
 
 def build_sample_meta(results: dict[str, Any]) -> dict[str, Any]:
@@ -312,6 +320,7 @@ def build_manifest(
             "trace_etl": TRACE_ETL_PATH,
             "report_json": REPORT_JSON_PATH,
             "report_html": REPORT_HTML_PATH,
+            **({"clock_sync": CLOCK_SYNC_PATH} if usable_file(package.clock_sync_source) else {}),
         },
         "integrity": {
             "hash_manifest": HASH_MANIFEST_PATH,

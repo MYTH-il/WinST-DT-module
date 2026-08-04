@@ -40,6 +40,43 @@ id_ed25519*
 *.ova
 *.ovf
 
+# Untrusted samples and quarantine directories
+#
+# Keep malware outside the source tree where possible. These root-level names
+# cover the directories used by the Windows and planned Android workflows.
+/ACTUAL MALWARE/
+/Malware/
+/malware/
+/samples/
+/Samples/
+/incoming/
+/quarantine/
+/specimens/
+
+# Executable/sample formats must never be committed. Source scripts such as
+# PowerShell remain allowed; generated Windows helpers are already under target/.
+*.[eE][xX][eE]
+*.[dD][lL][lL]
+*.[sS][yY][sS]
+*.[sS][cC][rR]
+*.[cC][oO][mM]
+*.[cC][pP][lL]
+*.[mM][sS][iI]
+*.[mM][sS][pP]
+*.[aA][pP][kK]
+*.[aA][aA][bB]
+*.[dD][eE][xX]
+
+# Sample archives and generated evidence packages
+*.7[zZ]
+*.[rR][aA][rR]
+*.[zZ][iI][pP]
+*.[tT][aA][rR]
+*.[tT][gG][zZ]
+*.[gG][zZ]
+*.[bB][zZ]2
+*.[xX][zZ]
+
 # Runtime captures and evidence artifacts
 *.pcap
 *.pcapng
@@ -61,6 +98,12 @@ logs/
 /images/
 /setup-state/
 /docs/validation/evidence/
+/analysis/
+/analyses/
+/storage/analyses/
+/memory/
+/dropped/
+/payloads/
 
 # OS metadata
 .DS_Store

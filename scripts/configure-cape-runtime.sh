@@ -167,11 +167,15 @@ guest_ip_for_index() {
 ensure_dhcp_reservation() {
   local name="$1"
   local ip="$2"
-  local mac
+  local mac old_mac
   mac="$(env LD_LIBRARY_PATH="$SYSTEM_LIB_PATH" virsh -c "$LIBVIRT_URI" dumpxml "$name" | sed -n "s/.*<mac address='\([^']*\)'.*/\1/p" | head -n1)"
   if [ -z "$mac" ]; then
     echo "could not discover MAC for $name" >&2
     exit 1
+  fi
+  old_mac="$(env LD_LIBRARY_PATH="$SYSTEM_LIB_PATH" virsh -c "$LIBVIRT_URI" net-dumpxml "$NETWORK_NAME" | sed -n "s/.*<host mac='\([^']*\)' name='$name' ip='$ip'.*/\1/p" | head -n1)"
+  if [ -n "$old_mac" ] && [ "$old_mac" != "$mac" ]; then
+    run_root_shell "env LD_LIBRARY_PATH='$SYSTEM_LIB_PATH' virsh -c '$LIBVIRT_URI' net-update '$NETWORK_NAME' delete ip-dhcp-host \"<host mac='$old_mac' name='$name' ip='$ip'/>\" --live --config"
   fi
   if ! env LD_LIBRARY_PATH="$SYSTEM_LIB_PATH" virsh -c "$LIBVIRT_URI" net-dumpxml "$NETWORK_NAME" | grep -q "$mac"; then
     run_root_shell "env LD_LIBRARY_PATH='$SYSTEM_LIB_PATH' virsh -c '$LIBVIRT_URI' net-update '$NETWORK_NAME' add ip-dhcp-host \"<host mac='$mac' name='$name' ip='$ip'/>\" --live --config || env LD_LIBRARY_PATH='$SYSTEM_LIB_PATH' virsh -c '$LIBVIRT_URI' net-dumpxml '$NETWORK_NAME' | grep -q '$mac'"
@@ -421,6 +425,7 @@ configure_live_cape_files() {
   set_ini_value "$CAPE_DIR/conf/cuckoo.conf" resultserver ip "$HOST_IP"
   set_ini_value "$CAPE_DIR/conf/auxiliary.conf" sniffer interface "$BRIDGE_NAME"
   set_ini_value "$CAPE_DIR/conf/auxiliary.conf" auxiliary_modules winstdt_etw_pickup yes
+  set_ini_value "$CAPE_DIR/conf/routing.conf" inetsim enabled yes
   set_ini_value "$CAPE_DIR/conf/routing.conf" inetsim server "$HOST_IP"
   set_ini_value "$CAPE_DIR/conf/routing.conf" inetsim interface "$BRIDGE_NAME"
   install_reporting_overlay
@@ -469,7 +474,7 @@ ensure_size '$golden' '$VM_DISK_GB'"
     chmod 0644 '$clone'
   fi
   current_bytes=\$(qemu-img info --output=json '$clone' | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"virtual-size\"])')
-  required_bytes=\$(('$VM_DISK_GB' * 1024 * 1024 * 1024))
+  required_bytes=\$(($VM_DISK_GB * 1024 * 1024 * 1024))
   if [ \"\$current_bytes\" -lt \"\$required_bytes\" ]; then
     qemu-img resize '$clone' '${VM_DISK_GB}G'
   fi

@@ -4,6 +4,12 @@ All notable project changes since the implementation plan was finalized are reco
 
 ## Unreleased
 
+- Added automated Windows guest finalization for modern CAPE agent installation,
+  ETW provisioning/validation, guest hardening, cold-boot verification, and
+  hardened snapshot resealing.
+- Added an automated benign deployment acceptance gate that requires a completed,
+  schema-valid handoff with non-empty PCAP and ETL artifacts over INetSim.
+
 Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VMCloak-built Windows 10 22H2 x64 guest, CAPE-native orchestration, raw ETW `.etl` handoff, graceful provider degradation, and `capemon` retained during MVP validation.
 
 ### Planning and Scope
@@ -398,3 +404,5 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
 - Multi-VM detonation pool.
 - Windows 11 guest variant.
 - Signed evidence manifest and HSM/timestamp-backed chain of custody.
+ - Add a midpoint-based Windows guest-to-PCAP-host clock offset utility with explicit uncertainty and correlation semantics.
+ - Enforce per-golden-image Pafish/al-khaser qualification, reviewed acceptance, pre-seal sanitization, and non-invasive cold-boot verification.

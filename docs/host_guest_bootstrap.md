@@ -33,6 +33,52 @@ Close the CAPE runtime gap after host bootstrap:
 scripts/configure-cape-runtime.sh --execute
 ```
 
+Finalize the Windows guest after the runtime script has registered its libvirt
+domain. This step installs the current CAPE agent and ETW collector, applies the
+guest hardening profile, validates ETW across a cold boot, and replaces the
+hardened running-state snapshot:
+
+```bash
+scripts/finalize-windows-guest.sh \
+  --qualification-only \
+  --al-khaser /path/to/al-khaser.exe \
+  --pafish /path/to/pafish.exe \
+  --execute
+# Review the new evidence into golden_image_report_current.md. Sealing is
+# deliberately blocked until every required row is Pass/N/A and the decision is Accepted.
+scripts/finalize-windows-guest.sh \
+  --seal-approved \
+  --acceptance-report docs/validation/golden_image_report_current.md \
+  --execute
+```
+
+Finally, run the automated deployment acceptance gate. It submits only the
+repository's controlled benign PowerShell payload through the isolated INetSim
+route and fails unless CAPE exports both non-empty PCAP and ETL artifacts in a
+schema-valid completed handoff:
+
+```bash
+scripts/validate-deployment.sh --execute
+```
+
+The complete automated order for a new host is therefore:
+
+```bash
+scripts/setup-ubuntu24-host.sh --windows-iso /absolute/path/to/Win10_22H2_x64.iso --execute
+scripts/configure-cape-runtime.sh --execute
+scripts/finalize-windows-guest.sh --qualification-only \
+  --al-khaser /path/to/al-khaser.exe --pafish /path/to/pafish.exe --execute
+# After evidence review and an Accepted report:
+scripts/finalize-windows-guest.sh --seal-approved \
+  --acceptance-report docs/validation/golden_image_report_current.md --execute
+
+For isolated ST/DT testing where documented anti-evasion failures are accepted,
+add `--allow-rejected`. This does not bypass qualification, guest sanitization,
+cold-boot readiness, or telemetry requirements.
+scripts/configure-cape-runtime.sh --execute
+scripts/validate-deployment.sh --execute
+```
+
 This configures the live CAPE checkout under `/opt/CAPEv2`, repairs the
 Python `libvirt` binding mismatch when a stale `/usr/local` binding shadows the
 Ubuntu package, writes the WinST/DT KVM machine config, installs the reporting
@@ -61,11 +107,18 @@ the runtime closure script. VM definitions use addresses beginning at
 `10.66.0.101`; count `1` preserves the MVP domain name
 `winstdt-win10-22h2`.
 
-Live egress remains disabled. Setting `WINSTDT_LIVE_EGRESS_ENABLED=1` only
-passes the script gate when approval metadata is also supplied:
+Live egress remains disabled. **No controlled live-egress route is currently
+implemented or available for testing or analysis; it is under development.**
+Setting `WINSTDT_LIVE_EGRESS_ENABLED=1` only passes a fail-closed metadata gate
+when approval metadata is also supplied:
 `WINSTDT_LIVE_EGRESS_APPROVAL_ID`, `WINSTDT_LIVE_EGRESS_OWNER`,
 `WINSTDT_LIVE_EGRESS_DATE`, `WINSTDT_LIVE_EGRESS_ALLOWED_NETWORKS`, and
 `WINSTDT_LIVE_EGRESS_RATE_LIMIT`.
+
+Passing this gate does not create a gateway, apply network containment, or make
+live egress safe or operational. Use only isolated/drop or simulated-service
+routes until the controls listed in `docs/current_stack.md` are implemented and
+accepted.
 
 Disabled extension profiles live under `config/`:
 

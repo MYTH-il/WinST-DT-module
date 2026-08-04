@@ -140,6 +140,17 @@ Replace those cells with `Pass`, `Fail`, or `N/A` after inspecting the raw stdou
 and stderr. Do not mark the image accepted while any required row is pending or
 failed.
 
+## Enforced golden-image lifecycle
+
+`scripts/finalize-windows-guest.sh` provides two mutually exclusive executable
+phases. `--qualification-only` requires both tool binaries, retrieves their
+evidence, shuts the guest down, and never seals. After review, `--seal-approved`
+requires a report whose decision is exactly `Accepted` and whose required tool
+cells are exactly `Pass` or `N/A`. It then removes setup scripts, validation
+tools/evidence, stale ETW outputs, and PowerShell command history; cold-boots the
+guest; performs a non-invasive CAPE-agent readiness check; and seals the named
+snapshot. Any material image change requires this lifecycle again.
+
 ## Operating Assumptions
 
 - Strict gate means Strict Subset Gate, not full all-check pass.

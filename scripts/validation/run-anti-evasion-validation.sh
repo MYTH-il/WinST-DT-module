@@ -76,8 +76,11 @@ agent_execute() {
   local max_time=$((TIMEOUT_SECONDS * 2 + 180))
   curl --max-time "$max_time" -fsS -X POST \
     --data-urlencode "command=$command" \
-    -d 'shell=1' \
     "$(base_url)/execute"
+}
+
+agent_mkdir() {
+  agent_post -X POST --data-urlencode "dirpath=$1" "$(base_url)/mkdir" >/dev/null
 }
 
 agent_upload() {
@@ -141,7 +144,7 @@ main() {
   zip_guest="$(guest_join "$GUEST_STAGE_DIR" "anti-evasion-evidence.zip")"
 
   log "creating guest stage directory"
-  agent_execute "cmd.exe /c mkdir \"${guest_tools_dir}\" 2>nul" >/dev/null
+  agent_mkdir "$guest_tools_dir"
 
   log "uploading tools and collector"
   if [ "$SKIP_AL_KHASER" -eq 0 ]; then
@@ -216,6 +219,24 @@ PY
 
   log "evidence extracted to ${local_run_dir}"
   find "$local_run_dir" -maxdepth 3 -type f -printf '%P %s bytes\n' | sort
+  python3 - "$local_run_dir" <<'PY'
+from pathlib import Path
+import json, sys
+
+root = Path(sys.argv[1])
+for name in ('al-khaser', 'pafish'):
+    result_path = next(root.rglob(name + '.result.json'), None)
+    if result_path is None:
+        raise SystemExit(name + ' result metadata is missing')
+    result = json.loads(result_path.read_text(encoding='utf-8-sig'))
+    if not result.get('completed') or result.get('timed_out'):
+        raise SystemExit(name + ' did not complete successfully')
+    stdout = next(root.rglob(name + '.stdout.txt'), None)
+    sidecars = [path for path in (result_path.parent / name).rglob('*') if path.is_file() and path.suffix.lower() != '.exe' and path.stat().st_size]
+    if not ((stdout and stdout.stat().st_size) or sidecars):
+        raise SystemExit(name + ' produced no reviewable stdout or sidecar output')
+print('both anti-evasion tools produced reviewable evidence')
+PY
 }
 
 main

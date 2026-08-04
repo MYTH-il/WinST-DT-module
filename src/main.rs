@@ -37,6 +37,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Emit the guest UTC Unix timestamp in nanoseconds for host clock alignment.
+    ClockSample,
     /// Validate one completed handoff bundle directory.
     ValidateBundle {
         /// Path to /handoff/{session_id}.
@@ -435,6 +437,16 @@ type Result<T> = std::result::Result<T, ValidationError>;
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
+        Command::ClockSample => match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(duration) => {
+                println!("{}", duration.as_nanos());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("clock-sample failed: {error}");
+                ExitCode::from(1)
+            }
+        },
         Command::ValidateBundle {
             bundle,
             skip_hashes,
