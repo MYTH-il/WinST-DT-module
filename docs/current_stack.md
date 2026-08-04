@@ -115,7 +115,8 @@ coverage.
 | Suricata IDS | Degraded | Passive CAPE processing is enabled with a pinned 52,174-rule snapshot; positive/negative PCAP task acceptance remains pending |
 | TLS interception/decryption | Disabled | Mitmdump, PolarProxy and PCAP decryption are off |
 | Simulated Internet | Partial | Generic simulation may not satisfy malware-specific C2 protocols |
-| Controlled live egress | Not implemented | Under development; no current testing or analysis may rely on it |
+| Egress gateway appliance | Working, fail-closed | Alpine 3.24.1 dual-NIC VM at `10.66.0.254`; default-drop and automatic-expiry smoke test passed |
+| Controlled live egress | Degraded/not approved | Controlled-responder, CAPE lifecycle, capture export and guest-route acceptance remain pending |
 
 ### Validated runtime evidence
 
@@ -179,11 +180,11 @@ used and host/network correlation was disabled. This validates network-only
 integration, not the pending clock-corrected host/network acceptance case.
 
 The host has approximately 400 GiB free on the filesystem containing
-`/srv/winstdt` and `/var/lib/libvirt/images`; existing libvirt images occupy
-about 28 GiB. This is sufficient for a small gateway disk. A 20–32 GiB
-thin-provisioned gateway disk is recommended. The host has 15 GiB RAM and about
-8.5 GiB presently available, so assign the gateway 1–2 GiB and prevent it from
-overlapping a Windows full-memory workload through the task scheduler.
+`/srv/winstdt` and `/var/lib/libvirt/images`. The deployed Alpine 3.24.1 gateway
+uses one vCPU, 512 MiB RAM, and a 4 GiB thin-provisioned overlay backed by the
+pinned 200 MiB cloud image. This is a small host impact, but full-memory task
+serialization remains required because the Windows guest and its dumps dominate
+RAM and storage use.
 
 ## Network modes and interpretation
 
@@ -196,7 +197,8 @@ overlapping a Windows full-memory workload through the task scheduler.
 
 ### Not available now
 
-- Controlled live egress.
+- Controlled live egress from analysis tasks (the gateway appliance exists but
+  has not passed the controlled-responder and CAPE lifecycle gates).
 - Unrestricted Internet access.
 - A production-ready malware-specific C2 emulation library.
 

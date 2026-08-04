@@ -28,15 +28,16 @@ repository. The embedded copy is pinned and may lag upstream.
 
 ## Important network limitation
 
-**Controlled live-egress testing is not currently implemented or available.**
-Analyses must use an isolated/drop route or simulated services. The live-egress
-configuration examples and approval environment variables are design gates
-only: setting them does not create a working live-egress route.
+**The fail-closed egress gateway is deployed, but controlled live-egress testing
+is not yet approved or available to analysis tasks.** Analyses must still use an
+isolated/drop route or simulated services. The gateway has passed a no-traffic
+lifecycle/expiry test; it has not passed the controlled-responder or CAPE task
+lifecycle acceptance tests.
 
 Controlled live egress is under development. It must not be advertised or used
-until routing enforcement, destination allowlisting, DNS controls, rate and
-volume limits, complete capture, automatic expiry, emergency shutdown, and an
-end-to-end isolation test have been implemented and approved.
+until the remaining controlled-responder, guest-routing, capture-export, CAPE
+lifecycle, and end-to-end isolation tests have passed. See
+[`docs/controlled_egress_gateway.md`](docs/controlled_egress_gateway.md).
 
 Simulated networking can reveal attempted C2 destinations, connection cadence,
 DNS queries, and supported application traffic. It cannot prove successful C2

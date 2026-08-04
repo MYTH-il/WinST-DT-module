@@ -1,7 +1,7 @@
 {
   "run_id": "controlled-test-001",
-  "internal_interface": "ens3",
-  "external_interface": "ens4",
+  "internal_interface": "eth0",
+  "external_interface": "eth1",
   "guest_ip": "10.66.0.101",
   "destinations": [{"ip":"192.0.2.10","protocol":"tcp","port":443}],
   "dns": {"name":"test.invalid","pinned_ip":"192.0.2.10"},

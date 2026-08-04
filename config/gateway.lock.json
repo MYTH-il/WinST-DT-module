@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "guest": {
+    "distribution": "Alpine Linux 3.24.1",
+    "release_serial": "3.24.1-r0",
+    "image": "generic_alpine-3.24.1-x86_64-bios-cloudinit-r0.qcow2",
+    "base_url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/cloud",
+    "sha512": "8d756f6fc7653daa4fb4e2e213d8a66007bcb1e5a846e28891af62c47b90685c694486c2746099ad99e9e8f5278db76b69d11dfe1e9361aa4c8406df16929a9c"
+  },
+  "vm": {
+    "name": "winstdt-egress-gateway",
+    "vcpus": 1,
+    "memory_mib": 512,
+    "disk_gib": 4,
+    "internal_network": "winstdt-isolated",
+    "internal_ipv4": "10.66.0.254/24",
+    "internal_mac": "52:54:00:66:00:fe",
+    "external_network": "winstdt-external",
+    "external_mac": "52:54:00:67:00:02"
+  }
+}
