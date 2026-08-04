@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winst-dt.local/schemas/access_events.schema.json",
+  "type": "object",
+  "required": ["schema_version", "clock_correction", "host_network_correlation_enabled", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const":"1.0"},
+    "clock_correction": {
+      "type":"object", "required":["applied","offset_ns","uncertainty_ns"], "additionalProperties":false,
+      "properties":{"applied":{"type":"boolean"},"offset_ns":{"type":["integer","null"]},"uncertainty_ns":{"type":["integer","null"]}}
+    },
+    "host_network_correlation_enabled":{"type":"boolean"},
+    "events":{"type":"array","items":{"type":"object","required":["timestamp_utc","process_id","process_name","api_call","data_type","arguments","source"],"additionalProperties":false,"properties":{"timestamp_utc":{"type":["string","null"]},"process_id":{"type":["integer","null"]},"process_name":{"type":["string","null"]},"api_call":{"type":["string","null"]},"data_type":{"type":"string"},"arguments":{"type":["object","array"]},"source":{"const":"cape_capemon"}}}}
+  }
+}

@@ -10,6 +10,9 @@
     "sample",
     "cape",
     "telemetry",
+    "profile",
+    "resolved_options",
+    "capabilities",
     "artifact_paths",
     "enrichment",
     "residual_anti_evasion_risks"
@@ -36,6 +39,9 @@
     "sample": { "type": "object" },
     "cape": { "type": "object" },
     "telemetry": { "type": "object" },
+    "profile": { "type": "string" },
+    "resolved_options": { "type": "object" },
+    "capabilities": { "type": "object" },
     "artifact_paths": { "type": "object" },
     "enrichment": { "type": "object" },
     "residual_anti_evasion_risks": {

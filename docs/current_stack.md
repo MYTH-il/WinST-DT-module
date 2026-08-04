@@ -2,6 +2,11 @@
 
 Status date: 2026-08-04
 
+Repository capability-completion scaffolding is implemented, but no additional
+capability below is promoted to Working until its live acceptance test passes.
+See `analysis_capabilities.md` for the pinned installer, profiles, evidence
+contract, and acceptance procedure.
+
 This document describes what the deployed WinST/DT stack currently does. It is
 an operational inventory, not a roadmap and not a list of every feature CAPEv2
 can theoretically support. A component is marked working only where the local
@@ -31,6 +36,11 @@ interface capable of operating and coordinating both the Windows and Android
 analysis modules. That cross-platform interface is not currently implemented
 and is under development. CAPE's existing website remains a Windows-side
 operator surface, not the final platform UI.
+
+The authorized C2/Exfiltration analyzer is embedded as a pinned subtree.
+WinST/DT owns host-event conversion, clock-quality enforcement, immutable
+derived-result storage, and end-to-end acceptance; installation alone does not
+make host/network correlation Working.
 
 ## Deployed architecture
 
@@ -71,8 +81,8 @@ not make failed checks pass and does not improve resistance to VM detection.
 | Static IOC extraction | Partial | Available through CAPE results and project pre-triage; downstream normalization is still required |
 | VirusTotal | Degraded | Configured lookup returned HTTP 429 during the audited malware runs; it is a soft dependency |
 | ClamAV | Not active in audited CAPE run | No result was produced |
-| FLARE CAPA | Disabled | No systematic static capability mapping is currently produced |
-| FLOSS | Disabled | No decoded, stack, or tight-string recovery |
+| FLARE CAPA | Degraded | Version 9.3.1 and pinned rules are installed and enabled; known-positive completed-task acceptance remains pending |
+| FLOSS | Degraded, on demand | Version 3.1.1 and pinned signatures are installed; `deep_static` completed-task acceptance remains pending |
 | Detect It Easy | Disabled | No DIE compiler/packer result |
 | TRiD | Disabled | No TRiD identification result |
 | Interactive disassembly/decompilation | Outside automated pipeline | Analyst tooling such as Ghidra is not part of the automatic CAPE handoff |
@@ -98,11 +108,11 @@ coverage.
 | CAPE payload/config recovery | Working framework | No payload/config was recovered in the audited StealBit runs |
 | Process-memory analysis | Enabled framework, not demonstrated | Audited tasks contained no process-memory results |
 | Full VM memory dump | Disabled | Default `memory_dump` is off and audited tasks did not request it |
-| Volatility memory forensics | Disabled | Memory processing is not active |
+| Volatility memory forensics | Degraded, on demand | Volatility 3 2.11.0, offline Windows symbols, and baseline plugins are configured; full-memory task acceptance remains pending |
 | PCAP | Working | Non-empty captures are exported and hashed |
 | Raw ETL | Working with optional-provider degradation | Non-empty ETL is exported and hashed |
 | Screenshots | Disabled | QEMU screenshots are not currently collected |
-| Suricata IDS | Disabled | Suricata is installed but CAPE processing is off |
+| Suricata IDS | Degraded | Passive CAPE processing is enabled with a pinned 52,174-rule snapshot; positive/negative PCAP task acceptance remains pending |
 | TLS interception/decryption | Disabled | Mitmdump, PolarProxy and PCAP decryption are off |
 | Simulated Internet | Partial | Generic simulation may not satisfy malware-specific C2 protocols |
 | Controlled live egress | Not implemented | Under development; no current testing or analysis may rely on it |

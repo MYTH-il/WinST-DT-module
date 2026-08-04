@@ -7,7 +7,7 @@ RERUN_CAPE_INSTALLERS=0
 BUILD_GUEST=0
 WINDOWS_ISO=""
 FAIL_PHASE="${WINSTDT_DASHBOARD_FAIL_PHASE:-}"
-SETUP_SCRIPT_VERSION="v0.22"
+SETUP_SCRIPT_VERSION="v0.23"
 
 CAPE_REPO_URL="${CAPE_REPO_URL:-https://github.com/kevoreilly/CAPEv2.git}"
 CAPE_DIR="${CAPE_DIR:-/opt/CAPEv2}"
@@ -34,6 +34,7 @@ LOCAL_LIB_PATH="/usr/local/lib/x86_64-linux-gnu"
 LIBVIRT_URI="${LIBVIRT_URI:-qemu+unix:///system?socket=/run/libvirt/libvirt-sock}"
 COMMAND_TIMEOUT_SECONDS="${COMMAND_TIMEOUT_SECONDS:-7200}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CAPE_LOCK_FILE="${CAPE_LOCK_FILE:-$PROJECT_ROOT/config/cape.lock.json}"
 STATE_DIR="$WINSTDT_ROOT/setup-state"
 LOG_ROOT="${LOG_ROOT:-$WINSTDT_ROOT/logs/setup}"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -50,6 +51,7 @@ PHASE_KEYS=(
   vmcloak
   build
   overlay
+  analysis
   guest
 )
 
@@ -63,6 +65,7 @@ PHASE_NAMES=(
   "VMCloak"
   "WinST/DT binaries"
   "CAPE reporting overlay"
+  "Analysis capabilities"
   "Windows guest build"
 )
 
@@ -474,6 +477,7 @@ phase_apt() {
     curl dnsmasq-base genisoimage git gnupg inetsim jq libvirt-clients libvirt-daemon-system
     mingw-w64 pkg-config python3 python3-full python3-pip python3-venv
     rsync tshark virtinst virt-manager wget whiptail wireshark-common yara
+    suricata suricata-update
   )
   local missing=()
   local package
@@ -700,6 +704,8 @@ EOF
 
 phase_cape() {
   local key="$1"
+  local expected_commit
+  expected_commit="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cape"]["commit"])' "$CAPE_LOCK_FILE")" || return 1
   if cape_already_setup; then
     echo "CAPEv2 checkout already present: $CAPE_DIR" >>"${PHASE_LOG[$key]}"
     echo "Installer marker present: $(marker_path kvm-qemu)" >>"${PHASE_LOG[$key]}"
@@ -713,10 +719,11 @@ phase_cape() {
   fi
 
   if [ -d "$CAPE_DIR/.git" ]; then
-    DETAIL["$key"]="updating CAPEv2 checkout"
+    DETAIL["$key"]="verifying pinned CAPEv2 checkout"
     redraw
     run_root_logged "$key" chown -R "$CAPE_USER:$CAPE_USER" "$CAPE_DIR" || return 1
-    run_root_logged "$key" -u "$CAPE_USER" git -C "$CAPE_DIR" pull --ff-only || return 1
+    current_commit="$(git -c safe.directory="$CAPE_DIR" -C "$CAPE_DIR" rev-parse HEAD 2>/dev/null || true)"
+    [ "$current_commit" = "$expected_commit" ] || { echo "existing CAPE checkout is not pinned: expected=$expected_commit actual=$current_commit" >>"${PHASE_LOG[$key]}"; return 1; }
   elif [ -e "$CAPE_DIR" ]; then
     echo "$CAPE_DIR exists but is not a git checkout." >>"${PHASE_LOG[$key]}"
     return 1
@@ -724,6 +731,7 @@ phase_cape() {
     DETAIL["$key"]="cloning CAPEv2"
     redraw
     run_root_logged "$key" git clone "$CAPE_REPO_URL" "$CAPE_DIR" || return 1
+    run_root_logged "$key" git -C "$CAPE_DIR" checkout --detach "$expected_commit" || return 1
   fi
   run_root_logged "$key" chown -R "$CAPE_USER:$CAPE_USER" "$CAPE_DIR" || return 1
   run_root_logged "$key" chmod a+x "$CAPE_DIR/installer/kvm-qemu.sh" "$CAPE_DIR/installer/cape2.sh" || return 1
@@ -825,6 +833,21 @@ phase_overlay() {
   run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/cape/modules/reporting/winstdt_handoff_export.py" "$CAPE_DIR/modules/reporting/winstdt_handoff_export.py" || return 1
   run_root_logged "$key" install -d -m 0755 "$CAPE_DIR/custom/conf/reporting.conf.d" || return 1
   run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/cape/custom/conf/reporting.conf.d/winstdt_handoff_export.conf" "$CAPE_DIR/custom/conf/reporting.conf.d/winstdt_handoff_export.conf"
+}
+
+phase_analysis() {
+  local key="$1"
+  DETAIL["$key"]="installing CAPA/FLOSS/Suricata/Volatility"
+  redraw
+  if [ "$EXECUTE" -eq 1 ]; then
+    run_root_logged "$key" env CAPE_DIR="$CAPE_DIR" CAPE_USER="$CAPE_USER" WINSTDT_ROOT="$WINSTDT_ROOT" \
+      "$PROJECT_ROOT/scripts/install-analysis-capabilities.sh" --execute || return 1
+    run_root_logged "$key" env CAPE_DIR="$CAPE_DIR" CAPE_USER="$CAPE_USER" WINSTDT_ROOT="$WINSTDT_ROOT" \
+      WINSTDT_VALIDATE_SELECTED=capa,floss,suricata,volatility "$PROJECT_ROOT/scripts/validate-analysis-capabilities.sh" || return 1
+  else
+    run_logged "$key" env CAPE_DIR="$CAPE_DIR" CAPE_USER="$CAPE_USER" WINSTDT_ROOT="$WINSTDT_ROOT" \
+      "$PROJECT_ROOT/scripts/install-analysis-capabilities.sh" || return 1
+  fi
 }
 
 phase_guest() {
@@ -952,6 +975,7 @@ run_phase cape phase_cape
 run_phase vmcloak phase_vmcloak
 run_phase build phase_build
 run_phase overlay phase_overlay
+run_phase analysis phase_analysis
 run_phase guest phase_guest
 finish_screen
 trap - EXIT

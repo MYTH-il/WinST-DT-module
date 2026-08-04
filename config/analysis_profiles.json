@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "profiles": {
+    "standard": {"capa":true,"floss":false,"die":true,"trid":true,"screenshots":true,"suricata":"when_pcap_nonempty","tls_interception":false,"memory_dump":false,"volatility":false},
+    "deep_static": {"capa":true,"floss":true,"die":true,"trid":true,"screenshots":"when_detonated","suricata":"when_pcap_nonempty","tls_interception":false,"memory_dump":false,"volatility":false},
+    "tls_intercept": {"capa":true,"floss":false,"die":true,"trid":true,"screenshots":true,"suricata":"when_pcap_nonempty","tls_interception":true,"memory_dump":false,"volatility":false,"snapshot":"hardened-baseline-tls-v1"},
+    "full_memory": {"capa":true,"floss":false,"die":true,"trid":true,"screenshots":true,"suricata":"when_pcap_nonempty","tls_interception":false,"memory_dump":true,"volatility":true},
+    "full_investigation": {"capa":true,"floss":true,"die":true,"trid":true,"screenshots":true,"suricata":"when_pcap_nonempty","tls_interception":"controlled_only","memory_dump":true,"volatility":true}
+  }
+}

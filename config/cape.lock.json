@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "cape": {
+    "repository": "https://github.com/kevoreilly/CAPEv2.git",
+    "commit": "aaebb80f3ce27164b4661c1241e14236764962b1"
+  },
+  "tools": {
+    "flare_capa": { "version": "9.3.1" },
+    "floss": { "version": "3.1.1" },
+    "diec": { "version": "3.10" },
+    "suricata": { "version": "7.0.17" },
+    "mitmproxy": { "version": "12.1.1" },
+    "volatility3": { "version": "2.11.0" }
+  },
+  "external_data": {
+    "capa_rules": { "revision": "CAPEv2-aaebb80f", "sha256": "840057b3146fc7e9e9b4151198a91a7a198170bbd6df8bd7636d893665342b6c" },
+    "floss_signatures": { "revision": "CAPEv2-aaebb80f", "sha256": "3c2665f169fa7f6664bfd085615085452f1c5016f599347dd3871d9179ff8ddd" },
+    "trid_definitions": { "revision": "deployed-2026-08-04", "sha256": "297bc065b4d1a8d2456df6197a14c339992f32042413b9970a176d6ed8714e23", "binary_sha256": "317ad7e3a88e8fd9260da87ab61a9fcb27bdec0b4f2c122dacb5b128aa80f9c8" },
+    "suricata_rules": { "revision": "ubuntu-suricata-7.0.17-20260804", "sha256": "6e7bc614f2208606c5cc942a44874b359dc5e831b82a09d7dc9b0a0e46b660af" },
+    "volatility_symbols": {
+      "revision": "windows-symbol-pack-2019-10-16",
+      "url": "https://downloads.volatilityfoundation.org/volatility3/symbols/windows.zip",
+      "size_bytes": 839727133,
+      "sha256": "231d69735b9a5482b16bdbf1ec356e0a95574c44079e68dfb02ebddb34d55f3e"
+    }
+  },
+  "policy": {
+    "static_timeout_seconds": 120,
+    "static_max_file_bytes": 104857600,
+    "floss_max_output_bytes": 16777216,
+    "screenshot_interval_seconds": 5,
+    "screenshot_max_count": 120,
+    "screenshot_max_total_bytes": 268435456,
+    "memory_min_free_bytes": 25769803776,
+    "memory_retention_days": 7,
+    "memory_max_concurrency": 1
+  }
+}

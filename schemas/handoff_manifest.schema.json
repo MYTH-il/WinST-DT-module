@@ -18,6 +18,9 @@
     "static_hypotheses",
     "cape_task_id",
     "capemon_enabled",
+    "profile",
+    "resolved_options",
+    "capabilities",
     "telemetry",
     "tool_versions",
     "artifact_paths",
@@ -54,6 +57,12 @@
     },
     "cape_task_id": { "type": "integer", "minimum": 1 },
     "capemon_enabled": { "type": "boolean" },
+    "profile": {
+      "type": "string",
+      "enum": ["standard", "deep_static", "tls_intercept", "full_memory", "full_investigation"]
+    },
+    "resolved_options": { "type": "object", "additionalProperties": true },
+    "capabilities": { "$ref": "#/$defs/capabilities" },
     "telemetry": { "$ref": "#/$defs/telemetry" },
     "tool_versions": { "$ref": "#/$defs/tool_versions" },
     "artifact_paths": { "$ref": "#/$defs/artifact_paths" },
@@ -62,6 +71,40 @@
     "retention_policy": { "$ref": "#/$defs/retention_policy" }
   },
   "$defs": {
+    "capability": {
+      "type": "object",
+      "required": ["requested", "policy", "status", "version", "revision", "started_at_utc", "ended_at_utc", "source_artifact", "result_count", "warning_error_code", "truncated", "timeout"],
+      "additionalProperties": true,
+      "properties": {
+        "requested": { "type": "boolean" },
+        "policy": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed", "completed_zero_matches", "not_requested", "unsupported_format", "timeout", "tool_failure", "rules_unavailable", "intercepted", "no_tls_observed", "certificate_rejected", "certificate_pinning_suspected", "unsupported_protocol", "proxy_error", "captured_and_processed", "captured_processing_partial", "captured_processing_failed", "capture_failed", "skipped_insufficient_storage", "degraded"] },
+        "version": { "type": "string" },
+        "revision": { "type": "string" },
+        "started_at_utc": { "type": "string", "format": "date-time" },
+        "ended_at_utc": { "type": "string", "format": "date-time" },
+        "source_artifact": { "type": "string" },
+        "result_count": { "type": "integer", "minimum": 0 },
+        "warning_error_code": { "type": ["string", "null"] },
+        "truncated": { "type": "boolean" },
+        "timeout": { "type": "boolean" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["static", "dynamic"],
+      "additionalProperties": false,
+      "properties": {
+        "static": {
+          "type": "object", "required": ["capa", "floss", "die", "trid"], "additionalProperties": false,
+          "properties": {"capa":{"$ref":"#/$defs/capability"},"floss":{"$ref":"#/$defs/capability"},"die":{"$ref":"#/$defs/capability"},"trid":{"$ref":"#/$defs/capability"}}
+        },
+        "dynamic": {
+          "type": "object", "required": ["screenshots", "suricata", "tls_interception", "memory_dump", "volatility"], "additionalProperties": false,
+          "properties": {"screenshots":{"$ref":"#/$defs/capability"},"suricata":{"$ref":"#/$defs/capability"},"tls_interception":{"$ref":"#/$defs/capability"},"memory_dump":{"$ref":"#/$defs/capability"},"volatility":{"$ref":"#/$defs/capability"}}
+        }
+      }
+    },
     "error": {
       "type": "object",
       "required": ["stage", "code", "message"],

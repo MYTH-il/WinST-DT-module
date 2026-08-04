@@ -31,7 +31,7 @@ except ImportError:  # Allows local unit tests without a CAPEv2 checkout.
 
 
 SCHEMA_VERSION = "1.0"
-MODULE_VERSION = "0.1.0"
+MODULE_VERSION = "0.2.0"
 TRACE_ETL_PATH = "behavior/trace.etl"
 PCAP_PATH = "network/capture.pcapng"
 CLOCK_SYNC_PATH = "behavior/clock-sync.json"
@@ -66,6 +66,7 @@ class ExportOptions:
     validator_path: str | None
     fail_on_validator_error: bool
     pcap_converter: str | None
+    default_profile: str = "standard"
 
 
 class WinstdtHandoffExport(Report):
@@ -113,6 +114,7 @@ def options_from_mapping(values: dict[str, Any]) -> ExportOptions:
         validator_path=validator or None,
         fail_on_validator_error=boolean("fail_on_validator_error", True),
         pcap_converter=converter or "editcap",
+        default_profile=text("default_profile", "standard"),
     )
 
 
@@ -136,6 +138,11 @@ def export_handoff_bundle(
         copy_if_present(package.etl_source, tmp_bundle / TRACE_ETL_PATH, options)
         copy_if_present(package.clock_sync_source, tmp_bundle / CLOCK_SYNC_PATH, options)
 
+        profile, resolved_options = resolve_profile(results, options.default_profile)
+        capabilities = export_capability_artifacts(
+            results, analysis_path, tmp_bundle, profile, resolved_options
+        )
+
         sample_meta = build_sample_meta(results)
         write_json(tmp_bundle / "sample.meta.json", sample_meta)
 
@@ -145,6 +152,9 @@ def export_handoff_bundle(
             package=package,
             sample_meta=sample_meta,
             tmp_bundle=tmp_bundle,
+            profile=profile,
+            resolved_options=resolved_options,
+            capabilities=capabilities,
         )
         if events_jsonl_enabled():
             write_events_jsonl(tmp_bundle / EVENTS_JSONL_PATH, manifest)
@@ -278,6 +288,9 @@ def build_manifest(
     package: PackageInputs,
     sample_meta: dict[str, Any],
     tmp_bundle: Path,
+    profile: str,
+    resolved_options: dict[str, Any],
+    capabilities: dict[str, Any],
 ) -> dict[str, Any]:
     info = as_dict(results.get("info"))
     task_id = get_task_id(results)
@@ -306,6 +319,9 @@ def build_manifest(
         "static_hypotheses": sample_meta["static_hypotheses"],
         "cape_task_id": task_id,
         "capemon_enabled": options.capemon_enabled,
+        "profile": profile,
+        "resolved_options": resolved_options,
+        "capabilities": capabilities,
         "telemetry": telemetry,
         "tool_versions": {
             "cape_git_ref": options.cape_git_ref,
@@ -370,6 +386,9 @@ def build_analyst_report(
                 "degradation_reasons", []
             ),
         },
+        "profile": manifest.get("profile"),
+        "resolved_options": manifest.get("resolved_options", {}),
+        "capabilities": manifest.get("capabilities", {}),
         "artifact_paths": manifest["artifact_paths"],
         "enrichment": {
             "yara": sample_meta.get("yara", {}),
@@ -480,14 +499,12 @@ def copy_pcap(source: Path, destination: Path, options: ExportOptions) -> None:
 
 
 def write_hash_manifest(bundle: Path, status: str) -> None:
-    relative_paths = ["sample.meta.json", REPORT_JSON_PATH, REPORT_HTML_PATH]
-    if usable_file(bundle / PCAP_PATH):
-        relative_paths.append(PCAP_PATH)
-    if status == "completed" or usable_file(bundle / TRACE_ETL_PATH):
-        relative_paths.append(TRACE_ETL_PATH)
-    if usable_file(bundle / EVENTS_JSONL_PATH):
-        relative_paths.append(EVENTS_JSONL_PATH)
-
+    del status
+    relative_paths = sorted(
+        str(path.relative_to(bundle))
+        for path in bundle.rglob("*")
+        if path.is_file() and path.name not in {"manifest.json", HASH_MANIFEST_PATH}
+    )
     lines = [f"{sha256_file(bundle / relative)}  {relative}" for relative in relative_paths]
     (bundle / HASH_MANIFEST_PATH).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -685,3 +702,104 @@ def list_of_provider_issues(value: Any) -> list[dict[str, str]]:
         if provider:
             issues.append({"provider": provider, "reason": reason, "message": message})
     return issues
+
+
+PROFILE_OPTIONS = {
+    "standard": {"capa": True, "floss": False, "die": True, "trid": True, "screenshots": True, "suricata": True, "tls_interception": False, "memory_dump": False, "volatility": False},
+    "deep_static": {"capa": True, "floss": True, "die": True, "trid": True, "screenshots": False, "suricata": True, "tls_interception": False, "memory_dump": False, "volatility": False},
+    "tls_intercept": {"capa": True, "floss": False, "die": True, "trid": True, "screenshots": True, "suricata": True, "tls_interception": True, "memory_dump": False, "volatility": False},
+    "full_memory": {"capa": True, "floss": False, "die": True, "trid": True, "screenshots": True, "suricata": True, "tls_interception": False, "memory_dump": True, "volatility": True},
+    "full_investigation": {"capa": True, "floss": True, "die": True, "trid": True, "screenshots": True, "suricata": True, "tls_interception": False, "memory_dump": True, "volatility": True},
+}
+
+
+def resolve_profile(results: dict[str, Any], default: str) -> tuple[str, dict[str, Any]]:
+    info = as_dict(results.get("info"))
+    task_options = as_dict(info.get("options"))
+    profile = first_text(task_options.get("winstdt_profile"), info.get("winstdt_profile"), default)
+    if profile not in PROFILE_OPTIONS:
+        profile = default if default in PROFILE_OPTIONS else "standard"
+    resolved = dict(PROFILE_OPTIONS[profile])
+    for name in resolved:
+        if name in task_options:
+            resolved[name] = str(task_options[name]).lower() in {"1", "yes", "true", "on"}
+    return profile, resolved
+
+
+def export_capability_artifacts(results: dict[str, Any], analysis: Path, bundle: Path,
+                                profile: str, requested: dict[str, Any]) -> dict[str, Any]:
+    del profile
+    now = cape_time(None)
+    source_hash = first_text(as_dict(as_dict(results.get("target")).get("file")).get("sha256"), "0" * 64)
+    aliases = {
+        "capa": ["capa", "flare_capa"], "floss": ["floss"], "die": ["die"], "trid": ["trid"],
+        "screenshots": ["screenshots"], "suricata": ["suricata"],
+        "tls_interception": ["tls_interception", "mitmdump"], "memory_dump": ["memory_dump"],
+        "volatility": ["volatility", "volatility3"],
+    }
+    sections = {"static": {}, "dynamic": {}}
+    for name, keys in aliases.items():
+        value = next((results[k] for k in keys if k in results), None)
+        is_requested = bool(requested.get(name))
+        status = "not_requested" if not is_requested else "tool_failure"
+        count = 0
+        if value is not None:
+            count = len(value) if isinstance(value, (list, dict)) else 1
+            status = "completed" if count else "completed_zero_matches"
+            out = bundle / "analysis" / f"{name}.json"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            write_json(out, {"tool": name, "source_artifact_sha256": source_hash, "result": value})
+        entry = {
+            "requested": is_requested, "policy": "profile", "status": status,
+            "version": "reported_by_cape" if value is not None else "unknown",
+            "revision": "reported_by_cape" if value is not None else "unknown",
+            "started_at_utc": now, "ended_at_utc": now,
+            "source_artifact": source_hash, "result_count": count,
+            "warning_error_code": None if value is not None or not is_requested else "result_absent",
+            "truncated": False, "timeout": False,
+        }
+        sections["static" if name in {"capa", "floss", "die", "trid"} else "dynamic"][name] = entry
+
+    copy_capability_tree(analysis / "shots", bundle / "screenshots", 120, 256 * 1024 * 1024)
+    copy_capability_tree(analysis / "suricata", bundle / "network/suricata", 10000, 512 * 1024 * 1024)
+    copy_capability_tree(analysis / "tls", bundle / "network/tls", 1000, 256 * 1024 * 1024)
+    copy_capability_tree(analysis / "volatility", bundle / "memory/volatility", 1000, 512 * 1024 * 1024)
+    screenshots = sorted(p for p in (bundle / "screenshots").glob("*") if p.is_file()) if (bundle / "screenshots").is_dir() else []
+    if screenshots:
+        index = {"capture_method": "qemu", "images": [
+            {"path": p.name, "timestamp_utc": datetime.fromtimestamp(p.stat().st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
+             "sha256": sha256_file(p), "dimensions": None, "deduplicated": False} for p in screenshots
+        ]}
+        write_json(bundle / "screenshots/index.json", index)
+        sections["dynamic"]["screenshots"].update(status="completed", result_count=len(screenshots), warning_error_code=None)
+    eve = bundle / "network/suricata/eve.json"
+    if usable_file(eve):
+        sections["dynamic"]["suricata"].update(status="completed", result_count=sum(1 for _ in eve.open(encoding="utf-8", errors="replace")), warning_error_code=None)
+    har = bundle / "network/tls/traffic.har"
+    if usable_file(har):
+        sections["dynamic"]["tls_interception"].update(status="intercepted", result_count=1, warning_error_code=None)
+    volatility_files = list((bundle / "memory/volatility").glob("*.json")) if (bundle / "memory/volatility").is_dir() else []
+    if volatility_files:
+        sections["dynamic"]["volatility"].update(status="completed", result_count=len(volatility_files), warning_error_code=None)
+    memory = first_existing([analysis / "memory.raw", analysis / "memory.dmp"])
+    if usable_file(memory) and requested.get("memory_dump"):
+        destination = bundle / "memory/memory.raw"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(memory, destination)
+        memory_status = "captured_and_processed" if volatility_files else "captured_processing_failed"
+        sections["dynamic"]["memory_dump"].update(status=memory_status, result_count=1,
+                                                    warning_error_code=None if volatility_files else "volatility_output_absent")
+    return sections
+
+
+def copy_capability_tree(source: Path, destination: Path, max_files: int, max_bytes: int) -> None:
+    if not source.is_dir():
+        return
+    total = 0
+    for index, path in enumerate(sorted(p for p in source.rglob("*") if p.is_file())):
+        if index >= max_files or total + path.stat().st_size > max_bytes:
+            break
+        target = destination / path.relative_to(source)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+        total += path.stat().st_size

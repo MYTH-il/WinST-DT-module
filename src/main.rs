@@ -138,6 +138,16 @@ struct Manifest {
     telemetry: Telemetry,
     artifact_paths: ArtifactPaths,
     integrity: Integrity,
+    #[serde(default = "default_profile")]
+    profile: String,
+    #[serde(default)]
+    resolved_options: Value,
+    #[serde(default)]
+    capabilities: Value,
+}
+
+fn default_profile() -> String {
+    "standard".to_string()
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -250,6 +260,9 @@ struct AnalystReport {
     sample: Value,
     cape: Value,
     telemetry: Value,
+    profile: Value,
+    resolved_options: Value,
+    capabilities: Value,
     artifact_paths: Value,
     enrichment: Value,
     residual_anti_evasion_risks: Vec<&'static str>,
@@ -577,6 +590,9 @@ fn build_analyst_report(
             "etw_provider_state": value_at(manifest, "/telemetry"),
             "telemetry_degradation_warnings": value_at(manifest, "/telemetry/degradation_reasons")
         }),
+        profile: value_at(manifest, "/profile"),
+        resolved_options: value_at(manifest, "/resolved_options"),
+        capabilities: value_at(manifest, "/capabilities"),
         artifact_paths: value_at(manifest, "/artifact_paths"),
         enrichment: json!({
             "yara": value_at(sample_meta, "/yara"),
@@ -1589,6 +1605,7 @@ fn validate_bundle(bundle: &Path, verify_hashes: bool) -> Result<ValidationRepor
     validate_sample_meta(&manifest, &sample_meta)?;
     validate_artifacts(bundle, &manifest)?;
     validate_telemetry(&manifest, &mut warnings)?;
+    validate_capabilities(bundle, &manifest)?;
 
     if verify_hashes {
         validate_hash_manifest(bundle, &manifest)?;
@@ -1625,6 +1642,21 @@ fn validate_manifest_shape(manifest: &Manifest) -> Result<()> {
     }
     if manifest.cape_task_id == 0 {
         return contract_error("cape_task_id must be positive");
+    }
+    if !matches!(
+        manifest.profile.as_str(),
+        "standard" | "deep_static" | "tls_intercept" | "full_memory" | "full_investigation"
+    ) {
+        return contract_error(format!(
+            "unsupported analysis profile: {}",
+            manifest.profile
+        ));
+    }
+    if !manifest.resolved_options.is_null() && !manifest.resolved_options.is_object() {
+        return contract_error("resolved_options must be an object");
+    }
+    if !manifest.capabilities.is_null() && !manifest.capabilities.is_object() {
+        return contract_error("capabilities must be an object");
     }
     for error in &manifest.errors {
         if error.stage.is_empty() || error.code.is_empty() || error.message.is_empty() {
@@ -1812,6 +1844,16 @@ fn validate_hash_manifest(bundle: &Path, manifest: &Manifest) -> Result<()> {
     }
 
     let expected = parse_hash_manifest(&content)?;
+    for path in walk_files(bundle)? {
+        let relative = path
+            .strip_prefix(bundle)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        if relative != MANIFEST_PATH && relative != HASH_MANIFEST_PATH {
+            validate_hash_entry(bundle, &expected, &relative)?;
+        }
+    }
     if manifest.status == SessionStatus::Completed {
         for relative in [SAMPLE_META_PATH, PCAP_PATH, TRACE_ETL_PATH] {
             validate_hash_entry(bundle, &expected, relative)?;
@@ -1835,6 +1877,78 @@ fn validate_hash_manifest(bundle: &Path, manifest: &Manifest) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn walk_files(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    let mut dirs = vec![root.to_path_buf()];
+    while let Some(dir) = dirs.pop() {
+        for entry in fs::read_dir(&dir).map_err(|source| ValidationError::Read {
+            path: dir.clone(),
+            source,
+        })? {
+            let entry = entry.map_err(|source| ValidationError::Read {
+                path: dir.clone(),
+                source,
+            })?;
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.is_file() {
+                files.push(path);
+            }
+        }
+    }
+    Ok(files)
+}
+
+fn validate_capabilities(bundle: &Path, manifest: &Manifest) -> Result<()> {
+    if manifest.capabilities.is_null() {
+        return Ok(());
+    }
+    let root = manifest
+        .capabilities
+        .as_object()
+        .ok_or_else(|| ValidationError::Contract("capabilities must be an object".into()))?;
+    for section in ["static", "dynamic"] {
+        let values = root
+            .get(section)
+            .and_then(Value::as_object)
+            .ok_or_else(|| ValidationError::Contract(format!("capabilities.{section} missing")))?;
+        for (name, capability) in values {
+            let requested = capability
+                .get("requested")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| {
+                    ValidationError::Contract(format!("capability {name} requested missing"))
+                })?;
+            let status = capability
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if requested && status == "not_requested" {
+                return contract_error(format!(
+                    "requested capability {name} cannot be not_requested"
+                ));
+            }
+            if !requested && status != "not_requested" {
+                return contract_error(format!(
+                    "optional capability {name} must be not_requested when disabled"
+                ));
+            }
+            if status.starts_with("completed") {
+                let artifact = bundle.join("analysis").join(format!("{name}.json"));
+                if matches!(name.as_str(), "capa" | "floss" | "die" | "trid") && !artifact.is_file()
+                {
+                    return contract_error(format!(
+                        "completed capability {name} lacks {}",
+                        artifact.display()
+                    ));
+                }
+            }
+        }
+    }
     Ok(())
 }
 

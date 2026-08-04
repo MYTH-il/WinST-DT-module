@@ -7,6 +7,7 @@ SKIP_SERVICE_RESTART=0
 
 SCRIPT_VERSION="v0.1"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOCK_FILE="${LOCK_FILE:-$PROJECT_ROOT/config/cape.lock.json}"
 
 CAPE_DIR="${CAPE_DIR:-/opt/CAPEv2}"
 CAPE_USER="${CAPE_USER:-cape}"
@@ -209,7 +210,24 @@ harden_libvirt_domain_definition() {
 backup_file() {
   local path="$1"
   if [ -f "$path" ]; then
-    run_root cp -a "$path" "${path}.winstdt.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    local relative="${path#${CAPE_DIR}/}"
+    local destination="$WINSTDT_ROOT/backups/cape/$(date -u +%Y%m%dT%H%M%SZ)/$relative"
+    run_root install -d -m 0750 -o "$CAPE_USER" -g "$CAPE_USER" "$(dirname "$destination")"
+    run_root cp -a "$path" "$destination"
+  fi
+}
+
+verify_cape_revision() {
+  local expected actual
+  expected="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cape"]["commit"])' "$LOCK_FILE")"
+  actual="$(git -c safe.directory="$CAPE_DIR" -C "$CAPE_DIR" rev-parse HEAD 2>/dev/null || true)"
+  if [ "$actual" != "$expected" ]; then
+    echo "CAPE revision mismatch: expected=$expected actual=${actual:-missing}; refusing configuration" >&2
+    exit 1
+  fi
+  if ! git -c safe.directory="$CAPE_DIR" -C "$CAPE_DIR" diff --quiet || ! git -c safe.directory="$CAPE_DIR" -C "$CAPE_DIR" diff --cached --quiet || [ -n "$(git -c safe.directory="$CAPE_DIR" -C "$CAPE_DIR" ls-files --others --exclude-standard)" ]; then
+    log "CAPE revision matches but worktree has local divergence; no reset or overwrite will be attempted"
+    git -c safe.directory="$CAPE_DIR" -C "$CAPE_DIR" status --short >&2
   fi
 }
 
@@ -623,6 +641,7 @@ PY"
 
 require_execute_sudo
 validate_gates
+verify_cape_revision
 log "runtime closure script $SCRIPT_VERSION"
 ensure_runtime_packages
 ensure_mongodb_kernel_compat
