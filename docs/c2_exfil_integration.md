@@ -10,6 +10,8 @@ Inputs are the original PCAP, real CAPE/capemon access events, a static IOC prio
 
 Clock correction is applied from `behavior/clock-sync.json`. Host/network correlation is disabled when the measurement is missing or its uncertainty cannot support the analyzer's 15-second window. Network-only findings may still be produced and are labeled accordingly.
 
+Upstream commit `5d153d960fc101cdad171aa22f8cf434318d3202` is the current pin, and its Python environment is frozen in `config/c2-exfil-requirements.lock.txt`. Its 206-test suite passes locally with 196 tests passing and 10 optional tests skipped. A network-only integration run against immutable CAPE task 7 produced one weak beacon finding for `5.149.249.242:80`; fixture events were not used and host/network correlation was explicitly disabled because the older bundle lacks trustworthy access events.
+
 ## Execution and updates
 
 Install dependencies into a dedicated virtual environment with `scripts/install-c2-analyzer.sh --execute`, then run `scripts/run-c2-analyzer.sh /srv/winstdt/handoff/123`. The runner validates the bundle, supplies explicit inputs, writes provenance with upstream and input hashes, and atomically promotes `/srv/winstdt/c2-results/{task_id}`.

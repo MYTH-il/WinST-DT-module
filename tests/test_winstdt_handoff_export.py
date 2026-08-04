@@ -98,6 +98,8 @@ class WinstdtHandoffExportTests(unittest.TestCase):
         self.assertTrue((bundle / "behavior" / "trace.etl").is_file())
         self.assertEqual(manifest["artifact_paths"]["clock_sync"], "behavior/clock-sync.json")
         self.assertTrue((bundle / "behavior" / "clock-sync.json").is_file())
+        self.assertEqual(json.loads((bundle / "behavior" / "access_events.json").read_text()), [])
+        self.assertFalse(manifest["correlation"]["host_network_correlation_enabled"])
         self.assertFalse((bundle / "behavior" / "events.jsonl").exists())
         report = json.loads((bundle / "report.json").read_text(encoding="utf-8"))
         self.assertEqual(report["session_id"], "42")
@@ -108,6 +110,7 @@ class WinstdtHandoffExportTests(unittest.TestCase):
         )
         hashes = (bundle / "hashes.sha256").read_text(encoding="utf-8")
         self.assertIn("behavior/trace.etl", hashes)
+        self.assertIn("behavior/access_events.json", hashes)
         self.assertIn("report.json", hashes)
         self.assertIn("report.html", hashes)
 
@@ -176,6 +179,27 @@ class WinstdtHandoffExportTests(unittest.TestCase):
         manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["signature"]["adapter"], "local_file")
         self.assertTrue((bundle / "integrity" / "signature.sha256").is_file())
+
+    def test_clock_corrected_access_events_match_c2_contract(self):
+        (self.analysis_path / "dump.pcapng").write_bytes(b"pcapng bytes")
+        behavior = self.analysis_path / "behavior"; behavior.mkdir()
+        (behavior / "trace.etl").write_bytes(b"etl bytes")
+        clock_root = self.tempdir / "clock-sync"; clock_root.mkdir()
+        (clock_root / "42.json").write_text(json.dumps({
+            "quality": {"acceptable": True},
+            "measurements": {"start": {"guest_minus_host_ns": 1_000_000_000}}
+        }))
+        os.environ["WINSTDT_CLOCK_SYNC_ROOT"] = str(clock_root)
+        self.addCleanup(os.environ.pop, "WINSTDT_CLOCK_SYNC_ROOT", None)
+        results = sample_results()
+        results["behavior"] = {"processes": [{"process_name": "sample.exe", "calls": [
+            {"api": "GetClipboardData", "timestamp": "2026-07-19T01:02:04Z"}
+        ]}]}
+        bundle = self.module.export_handoff_bundle(results, self.analysis_path, self.options)
+        events = json.loads((bundle / "behavior" / "access_events.json").read_text())
+        self.assertEqual(events, [{"timestamp": "2026-07-19T01:02:03Z", "data_type": "clipboard", "api_call": "GetClipboardData", "process": "sample.exe"}])
+        manifest = json.loads((bundle / "manifest.json").read_text())
+        self.assertTrue(manifest["correlation"]["host_network_correlation_enabled"])
 
 
 def sample_results():

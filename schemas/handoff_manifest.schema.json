@@ -21,6 +21,7 @@
     "profile",
     "resolved_options",
     "capabilities",
+    "correlation",
     "telemetry",
     "tool_versions",
     "artifact_paths",
@@ -63,6 +64,18 @@
     },
     "resolved_options": { "type": "object", "additionalProperties": true },
     "capabilities": { "$ref": "#/$defs/capabilities" },
+    "correlation": {
+      "type": "object",
+      "required": ["access_events_path", "event_count", "clock_quality_acceptable", "host_network_correlation_enabled", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "access_events_path": { "const": "behavior/access_events.json" },
+        "event_count": { "type": "integer", "minimum": 0 },
+        "clock_quality_acceptable": { "type": "boolean" },
+        "host_network_correlation_enabled": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
     "telemetry": { "$ref": "#/$defs/telemetry" },
     "tool_versions": { "$ref": "#/$defs/tool_versions" },
     "artifact_paths": { "$ref": "#/$defs/artifact_paths" },
@@ -232,7 +245,8 @@
         "report_json": { "const": "report.json" },
         "report_html": { "const": "report.html" },
         "events_jsonl": { "const": "behavior/events.jsonl" }
-        ,"clock_sync": { "const": "behavior/clock-sync.json" }
+        ,"clock_sync": { "const": "behavior/clock-sync.json" },
+        "access_events": { "const": "behavior/access_events.json" }
       }
     },
     "integrity": {

@@ -52,6 +52,7 @@ PHASE_KEYS=(
   build
   overlay
   analysis
+  c2
   guest
 )
 
@@ -66,6 +67,7 @@ PHASE_NAMES=(
   "WinST/DT binaries"
   "CAPE reporting overlay"
   "Analysis capabilities"
+  "C2/Exfiltration analyzer"
   "Windows guest build"
 )
 
@@ -850,6 +852,19 @@ phase_analysis() {
   fi
 }
 
+phase_c2() {
+  local key="$1"
+  DETAIL["$key"]="installing pinned C2 analyzer"
+  redraw
+  if [ "$EXECUTE" -eq 1 ]; then
+    run_root_logged "$key" env WINSTDT_ROOT="$WINSTDT_ROOT" CAPE_USER="$CAPE_USER" \
+      "$PROJECT_ROOT/scripts/install-c2-analyzer.sh" --execute || return 1
+  else
+    run_logged "$key" env WINSTDT_ROOT="$WINSTDT_ROOT" CAPE_USER="$CAPE_USER" \
+      "$PROJECT_ROOT/scripts/install-c2-analyzer.sh" || return 1
+  fi
+}
+
 phase_guest() {
   local key="$1"
   local detected_iso="$PROJECT_ROOT/Win10_22H2_x64.iso"
@@ -976,6 +991,7 @@ run_phase vmcloak phase_vmcloak
 run_phase build phase_build
 run_phase overlay phase_overlay
 run_phase analysis phase_analysis
+run_phase c2 phase_c2
 run_phase guest phase_guest
 finish_screen
 trap - EXIT

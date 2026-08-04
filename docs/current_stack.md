@@ -172,6 +172,12 @@ Tasks 6 and 7 do not have a trustworthy per-task start/end clock measurement.
 Their PCAP and ETL are valid standalone artifacts, but precise cross-timeline
 correlation must not be claimed for those runs.
 
+The pinned C2/Exfiltration subtree was exercised against task 7's original
+PCAP. It produced one weak network beacon finding for `5.149.249.242:80` in
+`/srv/winstdt/c2-results/7/`. Provenance records that fixture events were not
+used and host/network correlation was disabled. This validates network-only
+integration, not the pending clock-corrected host/network acceptance case.
+
 ## Network modes and interpretation
 
 ### Available now

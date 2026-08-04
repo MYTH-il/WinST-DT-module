@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0",
+  "repository": "https://github.com/demistifying/C2-Exfil-E-Rakshak.git",
+  "commit": "5d153d960fc101cdad171aa22f8cf434318d3202",
+  "subtree": "integrations/c2-exfil",
+  "correlation_window_seconds": 15,
+  "results_root": "/srv/winstdt/c2-results"
+}

@@ -39,6 +39,7 @@ HASH_MANIFEST_PATH = "hashes.sha256"
 REPORT_JSON_PATH = "report.json"
 REPORT_HTML_PATH = "report.html"
 EVENTS_JSONL_PATH = "behavior/events.jsonl"
+ACCESS_EVENTS_PATH = "behavior/access_events.json"
 SIGNATURE_PATH = "integrity/signature.sha256"
 BASELINE_PROVIDERS = [
     "Microsoft-Windows-Kernel-Process",
@@ -137,6 +138,9 @@ def export_handoff_bundle(
         copy_if_present(package.pcap_source, tmp_bundle / PCAP_PATH, options)
         copy_if_present(package.etl_source, tmp_bundle / TRACE_ETL_PATH, options)
         copy_if_present(package.clock_sync_source, tmp_bundle / CLOCK_SYNC_PATH, options)
+        access_status = write_access_events(
+            tmp_bundle / ACCESS_EVENTS_PATH, results, package.clock_sync_source
+        )
 
         profile, resolved_options = resolve_profile(results, options.default_profile)
         capabilities = export_capability_artifacts(
@@ -155,6 +159,7 @@ def export_handoff_bundle(
             profile=profile,
             resolved_options=resolved_options,
             capabilities=capabilities,
+            access_status=access_status,
         )
         if events_jsonl_enabled():
             write_events_jsonl(tmp_bundle / EVENTS_JSONL_PATH, manifest)
@@ -291,6 +296,7 @@ def build_manifest(
     profile: str,
     resolved_options: dict[str, Any],
     capabilities: dict[str, Any],
+    access_status: dict[str, Any],
 ) -> dict[str, Any]:
     info = as_dict(results.get("info"))
     task_id = get_task_id(results)
@@ -322,6 +328,7 @@ def build_manifest(
         "profile": profile,
         "resolved_options": resolved_options,
         "capabilities": capabilities,
+        "correlation": access_status,
         "telemetry": telemetry,
         "tool_versions": {
             "cape_git_ref": options.cape_git_ref,
@@ -336,6 +343,7 @@ def build_manifest(
             "trace_etl": TRACE_ETL_PATH,
             "report_json": REPORT_JSON_PATH,
             "report_html": REPORT_HTML_PATH,
+            "access_events": ACCESS_EVENTS_PATH,
             **({"clock_sync": CLOCK_SYNC_PATH} if usable_file(package.clock_sync_source) else {}),
         },
         "integrity": {
@@ -803,3 +811,60 @@ def copy_capability_tree(source: Path, destination: Path, max_files: int, max_by
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
         total += path.stat().st_size
+
+
+ACCESS_API_TYPES = {
+    "CryptUnprotectData": "browser_credentials", "BCryptDecrypt": "browser_credentials",
+    "SetWindowsHookExA": "keystrokes", "SetWindowsHookExW": "keystrokes", "GetAsyncKeyState": "keystrokes",
+    "BitBlt": "screenshot", "CreateCompatibleBitmap": "screenshot",
+    "GetClipboardData": "clipboard", "OpenClipboard": "clipboard",
+    "GetComputerNameExA": "system_info", "GetComputerNameExW": "system_info",
+    "GetUserNameA": "system_info", "GetUserNameW": "system_info",
+    "ReadFile": "file_access", "CreateFileA": "file_access", "CreateFileW": "file_access",
+}
+
+
+def write_access_events(path: Path, results: dict[str, Any], clock_path: Path | None) -> dict[str, Any]:
+    clock = read_first_json([clock_path] if clock_path else [])
+    quality = as_dict(clock.get("quality"))
+    measurements = as_dict(clock.get("measurements"))
+    acceptable = bool(quality.get("acceptable")) and bool(measurements)
+    offsets = [int(as_dict(v).get("guest_minus_host_ns", 0)) for v in measurements.values()]
+    offset_ns = int(sum(offsets) / len(offsets)) if offsets else 0
+    events = []
+    if acceptable:
+        behavior = as_dict(results.get("behavior"))
+        for process in behavior.get("processes", []) if isinstance(behavior.get("processes"), list) else []:
+            proc = as_dict(process)
+            for call in proc.get("calls", []) if isinstance(proc.get("calls"), list) else []:
+                item = as_dict(call)
+                api = first_text(item.get("api"))
+                data_type = ACCESS_API_TYPES.get(api)
+                if not data_type:
+                    continue
+                timestamp = corrected_timestamp(item.get("timestamp"), offset_ns)
+                if timestamp:
+                    events.append({"timestamp": timestamp, "data_type": data_type,
+                                   "api_call": api, "process": first_text(proc.get("process_name")) or None})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(events, indent=2) + "\n", encoding="utf-8")
+    return {"access_events_path": ACCESS_EVENTS_PATH, "event_count": len(events),
+            "clock_quality_acceptable": acceptable,
+            "host_network_correlation_enabled": acceptable and bool(events),
+            "reason": None if acceptable else "clock_quality_insufficient"}
+
+
+def corrected_timestamp(value: Any, guest_minus_host_ns: int) -> str | None:
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (int, float)):
+            guest = datetime.fromtimestamp(float(value), timezone.utc)
+        else:
+            guest = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            if guest.tzinfo is None:
+                guest = guest.replace(tzinfo=timezone.utc)
+        host = guest.timestamp() - guest_minus_host_ns / 1_000_000_000
+        return datetime.fromtimestamp(host, timezone.utc).isoformat().replace("+00:00", "Z")
+    except (ValueError, TypeError, OSError):
+        return None
