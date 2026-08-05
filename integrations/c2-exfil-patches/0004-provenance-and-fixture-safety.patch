@@ -1,0 +1,7 @@
+diff --git a/.winstdt/0004-provenance-and-fixture-safety b/.winstdt/0004-provenance-and-fixture-safety
+new file mode 100644
+index 0000000..d9d6101
+--- /dev/null
++++ b/.winstdt/0004-provenance-and-fixture-safety
+@@ -0,0 +1 @@
++WinST/DT compatibility patch: provenance and fixture-safety contract.

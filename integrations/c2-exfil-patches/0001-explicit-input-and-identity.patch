@@ -1,0 +1,7 @@
+diff --git a/.winstdt/0001-explicit-input-and-identity b/.winstdt/0001-explicit-input-and-identity
+new file mode 100644
+index 0000000..f3fb21a
+--- /dev/null
++++ b/.winstdt/0001-explicit-input-and-identity
+@@ -0,0 +1 @@
++WinST/DT compatibility patch: explicit input and identity contract.

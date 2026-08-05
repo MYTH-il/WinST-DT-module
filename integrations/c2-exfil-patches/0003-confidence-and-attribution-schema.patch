@@ -1,0 +1,7 @@
+diff --git a/.winstdt/0003-confidence-and-attribution-schema b/.winstdt/0003-confidence-and-attribution-schema
+new file mode 100644
+index 0000000..89e2d18
+--- /dev/null
++++ b/.winstdt/0003-confidence-and-attribution-schema
+@@ -0,0 +1 @@
++WinST/DT compatibility patch: confidence and attribution contract.

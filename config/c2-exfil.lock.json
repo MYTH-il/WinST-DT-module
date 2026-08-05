@@ -10,8 +10,13 @@
   "dependency_lock": "config/c2-exfil-requirements.lock.txt",
   "dependency_lock_sha256": "18d8e1acfd170b8f8c321aa3737b465ea4f19d28bcefd9534f5b6becb6e1ea6d",
   "patches": {
-    "series": [],
-    "series_sha256": null
+    "series": [
+      "0001-explicit-input-and-identity.patch",
+      "0002-postgresql-schema-compatibility.patch",
+      "0003-confidence-and-attribution-schema.patch",
+      "0004-provenance-and-fixture-safety.patch"
+    ],
+    "series_sha256": "c468373f782a3c5bd200a86a8233f913ac1fda184383b9d3457e6ec0ad2525d4"
   },
   "correlation_window_seconds": 15,
   "results_root": "/srv/winstdt/c2-results"

@@ -1,0 +1,7 @@
+diff --git a/.winstdt/0002-postgresql-schema-compatibility b/.winstdt/0002-postgresql-schema-compatibility
+new file mode 100644
+index 0000000..e256453
+--- /dev/null
++++ b/.winstdt/0002-postgresql-schema-compatibility
+@@ -0,0 +1 @@
++WinST/DT compatibility patch: PostgreSQL schema version 2 contract.
