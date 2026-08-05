@@ -346,16 +346,9 @@ Baseline: finalized WinST/DT implementation plan with CAPEv2 rolling release, VM
 
 ### Documentation
 
-- Added setup audit:
-  - `docs/setup_shortcuts_and_remediations.md`
-- The setup audit records:
-  - shortcut/overlooked requirement
-  - failure mode
-  - remediation
-  - essential/non-essential judgment
-  - pros/cons
-  - orchestration impact
-  - anti-VM and anti-sandbox impact
+- Added a host-specific setup audit during deployment; it was subsequently
+  removed after its durable remediations were incorporated into the maintained
+  bootstrap and validation runbooks.
 - Added and updated validation and bootstrap docs listed above.
 
 ### Validation Performed

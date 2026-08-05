@@ -170,7 +170,6 @@ that no unpacked payload existed.
 - [Single-host gateway workaround](docs/controlled_egress_gateway.md)
 - [Harmless end-to-end validation](docs/end_to_end_validation.md)
 - [Anti-evasion qualification gate](docs/validation/anti_evasion_gate.md)
-- [Implementation plan](WinST-DT-Implementation-Plan.md)
 
 ## Safety boundary
 
