@@ -5,7 +5,7 @@ EXECUTE=0; CONFIG=""; FIXTURE=""
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WINSTDT_ROOT="${WINSTDT_ROOT:-/srv/winstdt}"; CAPE_DIR="${CAPE_DIR:-/opt/CAPEv2}"
 CAPE_USER="${CAPE_USER:-cape}"; CAPE_API="${CAPE_API:-http://127.0.0.1:8000}"
-VM="${CAPE_VM_NAME:-winstdt-win10-22h2}"; SNAPSHOT="${CAPE_SNAPSHOT:-hardened-baseline-antievasion-v1}"
+VM="${CAPE_VM_NAME:-winstdt-win10-22h2}"; SNAPSHOT="${CAPE_SNAPSHOT:-hardened-baseline-controlled-egress-v1}"
 WAIT_SECONDS="${CAPE_WAIT_SECONDS:-900}"
 while [ "$#" -gt 0 ]; do case "$1" in --execute) EXECUTE=1;; --config) CONFIG="${2:?}"; shift;; --fixture) FIXTURE="${2:?}"; shift;; *) echo "Usage: $0 --config APPROVED.json --fixture FILE.exe [--execute]" >&2; exit 2;; esac; shift; done
 test -s "$CONFIG" && test -s "$FIXTURE" || { echo 'approved config and compiled fixture are required' >&2; exit 2; }

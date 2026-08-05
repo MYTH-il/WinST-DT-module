@@ -29,7 +29,7 @@ Negative acceptance additionally covers wrong destination and port, expiry durin
 
 ## Failure recovery
 
-Failed analyzer stages remain under a marked `.failed` staging directory. Handoffs and successful prior results are never rewritten. Revoke the gateway, collect both captures and responder receipts, confirm the forwarding chain is default-drop, revert `hardened-baseline-antievasion-v1`, and diagnose from preserved evidence.
+Failed analyzer stages remain under a marked `.failed` staging directory. Handoffs and successful prior results are never rewritten. Revoke the gateway, collect both captures and responder receipts, confirm the forwarding chain is default-drop, revert `hardened-baseline-controlled-egress-v1`, and diagnose from preserved evidence. Derive that snapshot once with `scripts/derive-controlled-egress-snapshot.sh --execute`; its reviewed parent remains available for rollback.
 
 ## Deferred reboot acceptance
 
