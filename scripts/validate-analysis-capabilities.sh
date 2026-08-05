@@ -33,7 +33,13 @@ if selected trid; then
   test -r "$CAPE_DIR/data/trid/triddefs.trd" && pass 'TRiD definitions readable' || fail 'TRiD definitions missing/unreadable'
 fi
 if selected suricata && command -v suricata >/dev/null 2>&1; then
-  sudo suricata -T -c /etc/suricata/winstdt.yaml >/dev/null 2>&1 && sudo -u "${CAPE_USER:-cape}" test -r "${WINSTDT_ROOT:-/srv/winstdt}/rules/suricata/suricata.rules" && pass 'Suricata configuration and processor access' || fail 'Suricata configuration or processor access'
+  rules_root="${WINSTDT_ROOT:-/srv/winstdt}/rules/suricata"
+  sudo suricata -T -c /etc/suricata/winstdt.yaml >/dev/null 2>&1 \
+    && sudo -u "${CAPE_USER:-cape}" test -r "$rules_root/suricata.rules" \
+    && sudo -u "${CAPE_USER:-cape}" test -r "$rules_root/winstdt-controlled-canary.rules" \
+    && grep -q 'winstdt-controlled-canary.rules' /etc/suricata/winstdt-cape.yaml \
+    && grep -q 'winstdt-cape.yaml' /etc/suricata/winstdt.yaml \
+    && pass 'Suricata configuration and processor access' || fail 'Suricata configuration or processor access'
 fi
 for module in capa floss volatility3; do
   capability="$module"; [ "$module" = volatility3 ] && capability=volatility

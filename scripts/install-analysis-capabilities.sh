@@ -108,8 +108,17 @@ if [ "$EXECUTE" -eq 1 ]; then
   actual_rules="$(sha256sum "$rules_source" | awk '{print $1}')"
   [ "$actual_rules" = "$expected_rules" ] || { echo "Suricata rules hash mismatch: expected=$expected_rules actual=$actual_rules" >&2; exit 1; }
   run install -m 0640 -o "$CAPE_USER" -g "$CAPE_USER" "$rules_source" "$WINSTDT_ROOT/rules/suricata/suricata.rules"
+  run install -m 0640 -o "$CAPE_USER" -g "$CAPE_USER" \
+    "$PROJECT_ROOT/config/suricata/winstdt-controlled-canary.rules" \
+    "$WINSTDT_ROOT/rules/suricata/winstdt-controlled-canary.rules"
   run cp -a /etc/suricata/suricata.yaml /etc/suricata/winstdt.yaml
+  run cp -a /etc/suricata/cape.yaml /etc/suricata/winstdt-cape.yaml
   run sed -i "s#^default-rule-path:.*#default-rule-path: $WINSTDT_ROOT/rules/suricata#" /etc/suricata/winstdt.yaml
+  run sed -i "s#^default-rule-path:.*#default-rule-path: $WINSTDT_ROOT/rules/suricata#" /etc/suricata/winstdt-cape.yaml
+  grep -q '^  - winstdt-controlled-canary.rules$' /etc/suricata/winstdt.yaml \
+    || run sed -i '/^  - suricata.rules$/a\  - winstdt-controlled-canary.rules' /etc/suricata/winstdt.yaml
+  run sed -i 's#^rule-files: suricata.rules$#rule-files:\n  - suricata.rules\n  - winstdt-controlled-canary.rules#' /etc/suricata/winstdt-cape.yaml
+  run sed -i 's#^  - cape.yaml$#  - winstdt-cape.yaml#' /etc/suricata/winstdt.yaml
   run suricata -T -c /etc/suricata/winstdt.yaml
 fi
 if [ "$EXECUTE" -eq 1 ]; then
