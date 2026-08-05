@@ -8,7 +8,7 @@ Status date: 2026-08-05. `Working` means a current acceptance record exists; sof
 | Two-reboot libvirt persistence | Working | [acceptance:libvirt_two_reboots] Prepare and two consecutive post-reboot validations passed with three distinct boot IDs |
 | CAPE service stability | Working | [acceptance:libvirt_two_reboots] CAPE remained healthy through both reboot validation cycles |
 | Windows guest and snapshot | Working | [acceptance:full_end_to_end] The reviewed parent and gateway-DNS derivative `hardened-baseline-controlled-egress-v2` passed detonation and rollback |
-| CAPE/capemon and PCAP/ETL handoff | Working | [acceptance:full_end_to_end] Task 16 preserved and validated immutable PCAP, ETL, clock, access-event, and reporting evidence |
+| CAPE/capemon and PCAP/ETL handoff | Working | [acceptance:full_end_to_end] Task 17 preserved and validated immutable PCAP, ETL, clock, access-event, and reporting evidence |
 | Detect It Easy 3.10 | Working | [acceptance:die_3_10] Official package hash, exact version, database access, PE positive, and text negative validated live |
 | CAPA/FLOSS/TRiD/Volatility | Degraded | Installed or profile-gated; completed-task positives remain required where indicated in `analysis_capabilities.md` |
 | Suricata | Working | [acceptance:full_end_to_end] Pinned passive processing emitted three controlled-canary alerts from the CAPE capture |
@@ -20,7 +20,7 @@ Status date: 2026-08-05. `Working` means a current acceptance record exists; sof
 | Controlled responder | Working | [acceptance:full_end_to_end] Private DNS and three deterministic signed receipts passed with no public route |
 | Gateway negative-policy matrix | Working | [acceptance:gateway_negative_matrix] Destination, port, expiry, byte, connection, DNS, outage, and emergency-stop cases passed together |
 | Harmless Windows fixture | Working | [acceptance:full_end_to_end] The Rust/Win32 PE completed its controlled activity and transmitted only generated canary data |
-| Full harmless CAPE detonation | Working | [acceptance:full_end_to_end] Task 16 passed correlation, Suricata, PostgreSQL, snapshot reversion, and final no-route proof |
+| Full harmless CAPE detonation | Working | [acceptance:full_end_to_end] Task 17 passed correlation, Suricata, PostgreSQL, snapshot reversion, and final no-route proof |
 | Public egress | Unavailable | Arbitrary public egress is unsupported |
 
 ## Deployed boundaries
