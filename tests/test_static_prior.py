@@ -39,3 +39,22 @@ def test_adapter_keeps_unknown_fields_only_in_provenance(tmp_path):
     jsonschema.validate(value, schema)
     assert "vendor_extension" not in value["events"][0]
     assert "vendor_extension" in value["adapter_provenance"]["unsupported_fields"]
+
+
+def test_adapter_normalizes_cape_suricata_wrapper(tmp_path):
+    source = tmp_path / "suricata.json"
+    source.write_text(json.dumps({"tool": "suricata", "result": {"alerts": [], "http": [{
+        "timestamp": "2026-08-05T00:00:00Z", "srcip": "10.66.0.101", "srcport": 49152,
+        "dstip": "192.168.125.10", "dstport": 8080, "hostname": "validation.winstdt.test",
+    }]}}))
+    output = tmp_path / "adapter"
+    subprocess.run(["python3", str(ROOT / "scripts/normalize-c2-adapter-inputs.py"),
+                    "--suricata", str(source), "--output", str(output)], check=True)
+    value = json.loads((output / "suricata-input.json").read_text())
+    assert value["status"] == "available"
+    assert value["events"] == [{
+        "event_type": "http", "timestamp": "2026-08-05T00:00:00Z",
+        "src_ip": "10.66.0.101", "src_port": 49152,
+        "dest_ip": "192.168.125.10", "dest_port": 8080,
+    }]
+    assert "hostname" in value["adapter_provenance"]["unsupported_fields"]

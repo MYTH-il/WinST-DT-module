@@ -53,7 +53,11 @@ then
 fi
 python3 "$PROJECT_ROOT/scripts/generate-static-prior.py" "$BUNDLE" "$stage/inputs/static-prior.json"
 suricata_args=(); tls_args=()
-test ! -s "$BUNDLE/network/suricata/eve.json" || suricata_args=(--suricata "$BUNDLE/network/suricata/eve.json")
+if test -s "$BUNDLE/network/suricata/eve.json"; then
+  suricata_args=(--suricata "$BUNDLE/network/suricata/eve.json")
+elif test -s "$BUNDLE/analysis/suricata.json"; then
+  suricata_args=(--suricata "$BUNDLE/analysis/suricata.json")
+fi
 test ! -s "$BUNDLE/network/tls/records.json" || tls_args=(--tls "$BUNDLE/network/tls/records.json")
 python3 "$PROJECT_ROOT/scripts/normalize-c2-adapter-inputs.py" "${suricata_args[@]}" "${tls_args[@]}" --output "$stage/inputs"
 native_zeek_args=()
@@ -80,7 +84,10 @@ python3 "$PROJECT_ROOT/scripts/build-c2-result.py" "$stage" "$BUNDLE" "$RUNTIME"
   --task-id "$task_id" --started-at "$started_at" --correlation "$correlation" --zeek-mode "$zeek_mode"
 chmod -R a-w "$stage"
 "$validator" validate-c2-result "$stage" --handoff "$BUNDLE"
+chmod u+w "$stage"
 mv "$stage" "$final"
+chmod a-w "$final"
 rmdir "$staging_parent"
+"$validator" validate-c2-result "$final" --handoff "$BUNDLE"
 trap - EXIT
 echo "$final"

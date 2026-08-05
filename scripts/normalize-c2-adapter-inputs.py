@@ -27,6 +27,17 @@ suricata = {"schema_version": "1.0", "status": "not_available", "events": [],
 if args.suricata:
     try:
         raw = [json.loads(line) for line in args.suricata.read_text(encoding="utf-8").splitlines() if line]
+        if len(raw) == 1 and raw[0].get("tool") == "suricata" and isinstance(raw[0].get("result"), dict):
+            cape = raw[0]["result"]
+            raw = []
+            for event_type, records in cape.items():
+                if not isinstance(records, list):
+                    continue
+                for record in records:
+                    if isinstance(record, dict):
+                        raw.append({"event_type": event_type.rstrip("s"), **record})
+        aliases = {"srcip": "src_ip", "srcport": "src_port", "dstip": "dest_ip", "dstport": "dest_port"}
+        raw = [{aliases.get(key, key): value for key, value in event.items()} for event in raw]
         supported = {"timestamp", "event_type", "src_ip", "src_port", "dest_ip", "dest_port", "proto", "alert", "dns", "http", "tls"}
         suricata["events"] = [{key: value for key, value in event.items() if key in supported} for event in raw]
         suricata["status"] = "available"

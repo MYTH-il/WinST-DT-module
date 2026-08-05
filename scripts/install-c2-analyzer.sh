@@ -5,6 +5,8 @@ EXECUTE=0
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WINSTDT_ROOT="${WINSTDT_ROOT:-/srv/winstdt}"
 CAPE_USER="${CAPE_USER:-cape}"
+C2_RUNNER_USER="${C2_RUNNER_USER:-${SUDO_USER:-$(id -un)}}"
+C2_RUNNER_GROUP="${C2_RUNNER_GROUP:-$(id -gn "$C2_RUNNER_USER")}"
 LOCK_FILE="${C2_LOCK_FILE:-$PROJECT_ROOT/config/c2-exfil.lock.json}"
 PATCH_ROOT="$PROJECT_ROOT/integrations/c2-exfil-patches"
 
@@ -67,7 +69,8 @@ if [ "$EXECUTE" -eq 0 ]; then
   exit 0
 fi
 
-sudo install -d -m 0755 "$runtime_root" "$WINSTDT_ROOT/c2-results"
+sudo install -d -m 0755 "$runtime_root"
+sudo install -d -m 0750 -o "$C2_RUNNER_USER" -g "$C2_RUNNER_GROUP" "$WINSTDT_ROOT/c2-results"
 test ! -e "$target" || { echo "effective runtime already exists: $target" >&2; exit 1; }
 stage="$(sudo mktemp -d "$runtime_root/.${effective}.XXXXXX")"
 cleanup() { sudo test ! -d "$stage" || sudo mv "$stage" "$stage.failed"; }
