@@ -56,9 +56,15 @@ suricata_args=(); tls_args=()
 test ! -s "$BUNDLE/network/suricata/eve.json" || suricata_args=(--suricata "$BUNDLE/network/suricata/eve.json")
 test ! -s "$BUNDLE/network/tls/records.json" || tls_args=(--tls "$BUNDLE/network/tls/records.json")
 python3 "$PROJECT_ROOT/scripts/normalize-c2-adapter-inputs.py" "${suricata_args[@]}" "${tls_args[@]}" --output "$stage/inputs"
+native_zeek_args=()
+test ! -d "$BUNDLE/network/zeek" || native_zeek_args=(--native "$BUNDLE/network/zeek")
+zeek_mode="$(python3 "$PROJECT_ROOT/scripts/prepare-zeek-input.py" "$stage/inputs/capture.pcapng" "$stage/zeek" \
+  --runtime "$RUNTIME" --metadata "$stage/inputs/zeek-selection.json" "${native_zeek_args[@]}")"
+zeek_args=()
+test "$zeek_mode" = pcap_only || zeek_args=(--zeek-dir zeek)
 (cd "$stage" && "$PYTHON" "$ANALYZER_ROOT/pipeline/orchestrator.py" inputs/capture.pcapng \
   --analysis-id "$task_id" --sample-sha256 "$sample_sha256" --pcap-sha256 "$pcap_sha256" \
-  "${access_args[@]}" --static-prior inputs/static-prior.json) >"$stage/analyzer.log" 2>&1
+  "${access_args[@]}" --static-prior inputs/static-prior.json "${zeek_args[@]}") >"$stage/analyzer.log" 2>&1
 if [ "${WINSTDT_POSTGRES_ENABLED:-0}" = 1 ]; then
   (cd "$stage" && "$PYTHON" "$ANALYZER_ROOT/pipeline/db_loader.py" output/exfil_events.json)
   DATABASE_URL="${DATABASE_URL:?DATABASE_URL is required when PostgreSQL loading is enabled}" \
@@ -71,7 +77,7 @@ json.dump({'task_id':int(task),'sample_id':sample,'pcap_sha256':pcap,'row_count'
 PY
 fi
 python3 "$PROJECT_ROOT/scripts/build-c2-result.py" "$stage" "$BUNDLE" "$RUNTIME" "$PROJECT_ROOT" \
-  --task-id "$task_id" --started-at "$started_at" --correlation "$correlation" --zeek-mode pcap_only
+  --task-id "$task_id" --started-at "$started_at" --correlation "$correlation" --zeek-mode "$zeek_mode"
 chmod -R a-w "$stage"
 "$validator" validate-c2-result "$stage" --handoff "$BUNDLE"
 mv "$stage" "$final"

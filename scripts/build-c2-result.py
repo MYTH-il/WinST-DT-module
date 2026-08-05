@@ -78,9 +78,10 @@ input_hashes = file_hashes(stage / "inputs")
 input_hashes.pop("handoff-hashes.before.json", None)
 suricata_status = json.loads((stage / "inputs/suricata-input.json").read_text())["status"]
 tls_status = json.loads((stage / "inputs/tls-input.json").read_text())["status"]
-zeek_limitations = (["fallback output is not equivalent to native Zeek", "x509.log unsupported",
-                     "files.log unsupported"] if args.zeek_mode == "upstream_fallback" else
-                    (["Zeek enrichment unavailable"] if args.zeek_mode == "pcap_only" else []))
+zeek_selection = json.loads((stage / "inputs/zeek-selection.json").read_text())
+if zeek_selection["zeek_mode"] != args.zeek_mode or zeek_selection["input_pcap_sha256"] != pcap:
+    raise SystemExit("Zeek selection provenance does not match the analyzed PCAP")
+zeek_limitations = zeek_selection["limitations"]
 provenance = {
     "schema_version": "1.0", "task_id": args.task_id, "sample_sha256": sample,
     "pcap_sha256": pcap, "upstream_repository": lock["repository"],
@@ -89,18 +90,20 @@ provenance = {
     "dependency_lock_sha256": lock["dependency_lock_sha256"], "input_hashes": input_hashes,
     "handoff_hashes": before, "correlation_mode": args.correlation,
     "zeek": {"zeek_mode": args.zeek_mode, "limitations": zeek_limitations,
-             "generated_files": sorted(str(p.relative_to(stage / "zeek")) for p in (stage / "zeek").rglob("*") if p.is_file()),
+             "generated_files": zeek_selection["generated_files"],
+             "parser_validation": zeek_selection["parser_validation"],
              "input_pcap_sha256": pcap},
     "feed_revisions": [], "database_schema_version": lock["database_schema_version"],
     "fixture_usage": False, "started_at_utc": args.started_at,
     "ended_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    "warnings": zeek_limitations, "degraded_features": ["zeek"] if args.zeek_mode == "pcap_only" else [],
+    "warnings": zeek_limitations + zeek_selection["warnings"],
+    "degraded_features": ["zeek"] if args.zeek_mode != "native" else [],
     "optional_inputs": {"access_events": "available" if args.correlation == "host_network" else "disabled",
                         "static_prior": "available", "suricata": suricata_status,
                         "tls": tls_status,
                         "postgresql": "available" if (output / "sql-verification.json").exists() else "disabled"},
     "stages": {"network": "complete", "correlation": "complete" if args.correlation == "host_network" else "not_available",
-               "attribution": "complete", "ioc_export": "complete", "zeek": "degraded" if args.zeek_mode == "pcap_only" else "complete",
+               "attribution": "complete", "ioc_export": "complete", "zeek": "complete" if args.zeek_mode == "native" else "degraded",
                "postgresql": "complete" if (output / "sql-verification.json").exists() else "not_available"}
 }
 write(stage / "provenance.json", provenance)
