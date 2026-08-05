@@ -449,7 +449,7 @@ configure_live_cape_files() {
   set_ini_value "$CAPE_DIR/conf/cuckoo.conf" resultserver ip "$HOST_IP"
   set_ini_value "$CAPE_DIR/conf/auxiliary.conf" sniffer interface "$BRIDGE_NAME"
   set_ini_value "$CAPE_DIR/conf/auxiliary.conf" auxiliary_modules winstdt_etw_pickup yes
-  set_ini_value "$CAPE_DIR/conf/auxiliary.conf" auxiliary_modules winstdt_clock_sync yes
+  set_ini_value "$CAPE_DIR/conf/auxiliary.conf" winstdt_clock_sync enabled yes
   set_ini_value "$CAPE_DIR/conf/routing.conf" routing enable_pcap yes
   set_ini_value "$CAPE_DIR/conf/routing.conf" inetsim enabled yes
   set_ini_value "$CAPE_DIR/conf/routing.conf" inetsim server "$HOST_IP"
