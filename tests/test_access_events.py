@@ -52,3 +52,14 @@ def test_etw_conflict_disables_correlation():
                                     [{"timestamp": "2026-08-05T10:00:30Z", "api_call": "ReadFile"}])
     assert status["etw_corroboration_state"] == "conflicting"
     assert status["reason_code"] == "etw_material_conflict"
+
+
+def test_native_capemon_api_names_are_preserved():
+    value = {"behavior": {"processes": [{"process_name": "fixture.exe", "calls": [
+        {"api": "NtReadFile", "timestamp": "2026-08-05T10:00:06Z"},
+        {"api": "SetClipboardData", "timestamp": "2026-08-05T10:00:07Z"},
+        {"api": "GetComputerNameW", "timestamp": "2026-08-05T10:00:08Z"},
+    ]}]}}
+    events, status = build_access_events(value, clock(), "2026-08-05T10:00:00Z", "2026-08-05T10:01:00Z")
+    assert [event["data_type"] for event in events] == ["file_access", "clipboard", "system_info"]
+    assert status["correlation_eligible"]

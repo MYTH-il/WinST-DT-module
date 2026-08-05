@@ -395,6 +395,7 @@ install_reporting_overlay() {
   run_root install -m 0644 "$PROJECT_ROOT/winstdt/__init__.py" "$CAPE_DIR/winstdt/__init__.py"
   run_root install -m 0644 "$PROJECT_ROOT/winstdt/access_events.py" "$CAPE_DIR/winstdt/access_events.py"
   run_root install -m 0644 "$PROJECT_ROOT/cape/modules/reporting/winstdt_handoff_export.py" "$CAPE_DIR/modules/reporting/winstdt_handoff_export.py"
+  run_root install -m 0644 "$PROJECT_ROOT/cape/modules/auxiliary/winstdt_clock_sync.py" "$CAPE_DIR/modules/auxiliary/winstdt_clock_sync.py"
   run_root install -d -m 0755 "$CAPE_DIR/analyzer/windows/modules/auxiliary"
   run_root install -m 0644 "$PROJECT_ROOT/cape/analyzer/windows/modules/auxiliary/winstdt_etw_pickup.py" "$CAPE_DIR/analyzer/windows/modules/auxiliary/winstdt_etw_pickup.py"
   run_root install -d -m 0755 "$CAPE_DIR/custom/conf/reporting.conf.d"
@@ -448,6 +449,7 @@ configure_live_cape_files() {
   set_ini_value "$CAPE_DIR/conf/cuckoo.conf" resultserver ip "$HOST_IP"
   set_ini_value "$CAPE_DIR/conf/auxiliary.conf" sniffer interface "$BRIDGE_NAME"
   set_ini_value "$CAPE_DIR/conf/auxiliary.conf" auxiliary_modules winstdt_etw_pickup yes
+  set_ini_value "$CAPE_DIR/conf/auxiliary.conf" auxiliary_modules winstdt_clock_sync yes
   set_ini_value "$CAPE_DIR/conf/routing.conf" routing enable_pcap yes
   set_ini_value "$CAPE_DIR/conf/routing.conf" inetsim enabled yes
   set_ini_value "$CAPE_DIR/conf/routing.conf" inetsim server "$HOST_IP"

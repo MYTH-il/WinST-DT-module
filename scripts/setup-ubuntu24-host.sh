@@ -854,6 +854,7 @@ phase_overlay() {
   run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/winstdt/__init__.py" "$CAPE_DIR/winstdt/__init__.py" || return 1
   run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/winstdt/access_events.py" "$CAPE_DIR/winstdt/access_events.py" || return 1
   run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/cape/modules/reporting/winstdt_handoff_export.py" "$CAPE_DIR/modules/reporting/winstdt_handoff_export.py" || return 1
+  run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/cape/modules/auxiliary/winstdt_clock_sync.py" "$CAPE_DIR/modules/auxiliary/winstdt_clock_sync.py" || return 1
   run_root_logged "$key" install -d -m 0755 "$CAPE_DIR/custom/conf/reporting.conf.d" || return 1
   run_root_logged "$key" install -m 0644 "$PROJECT_ROOT/cape/custom/conf/reporting.conf.d/winstdt_handoff_export.conf" "$CAPE_DIR/custom/conf/reporting.conf.d/winstdt_handoff_export.conf"
 }

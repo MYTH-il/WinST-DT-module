@@ -17,6 +17,8 @@ API_TYPES = {
     "GetComputerNameExW": "system_info", "GetUserNameA": "system_info",
     "GetUserNameW": "system_info", "ReadFile": "file_access",
     "CreateFileA": "file_access", "CreateFileW": "file_access",
+    "NtReadFile": "file_access", "NtCreateFile": "file_access",
+    "SetClipboardData": "clipboard", "GetComputerNameW": "system_info",
 }
 
 
