@@ -46,7 +46,7 @@ def test_adapter_normalizes_cape_suricata_wrapper(tmp_path):
     source.write_text(json.dumps({"tool": "suricata", "result": {"alerts": [], "http": [{
         "timestamp": "2026-08-05T00:00:00Z", "srcip": "10.66.0.101", "srcport": 49152,
         "dstip": "192.168.125.10", "dstport": 8080, "hostname": "validation.winstdt.test",
-    }]}}))
+    }]}}, indent=2))
     output = tmp_path / "adapter"
     subprocess.run(["python3", str(ROOT / "scripts/normalize-c2-adapter-inputs.py"),
                     "--suricata", str(source), "--output", str(output)], check=True)

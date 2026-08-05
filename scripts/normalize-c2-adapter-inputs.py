@@ -26,7 +26,12 @@ suricata = {"schema_version": "1.0", "status": "not_available", "events": [],
                                    "unsupported_fields": []}}
 if args.suricata:
     try:
-        raw = [json.loads(line) for line in args.suricata.read_text(encoding="utf-8").splitlines() if line]
+        text = args.suricata.read_text(encoding="utf-8")
+        try:
+            decoded = json.loads(text)
+            raw = decoded if isinstance(decoded, list) else [decoded]
+        except json.JSONDecodeError:
+            raw = [json.loads(line) for line in text.splitlines() if line]
         if len(raw) == 1 and raw[0].get("tool") == "suricata" and isinstance(raw[0].get("result"), dict):
             cape = raw[0]["result"]
             raw = []
