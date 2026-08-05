@@ -1,48 +1,21 @@
 # C2/Exfiltration analyzer integration
 
-The authorized upstream is `https://github.com/demistifying/C2-Exfil-E-Rakshak.git`, pinned as a Git subtree under `integrations/c2-exfil/`. The subtree contains upstream code only. WinST/DT adapters remain under `scripts/`.
+The upstream project is **C2-Exfil-E-Rakshak**, created and maintained by Raghav Shrivastav (`demistifying`): `https://github.com/demistifying/C2-Exfil-E-Rakshak.git`. Upstream questions belong in that repository.
 
-## Trust boundary
+`integrations/c2-exfil/` is a byte-for-byte subtree at `c417276196586c676d3f0b63d23100d2cd20fce9`. WinST/DT never edits it. The ordered files under `integrations/c2-exfil-patches/` are applied only to a versioned staging copy. The installer verifies upstream, dependency, patch-series, and effective-tree hashes; runs upstream and compatibility tests; and atomically promotes `/srv/winstdt/libexec/c2-exfil/<effective-version>/current` while retaining the prior version.
 
-The immutable handoff is input-only. Each execution writes to `/srv/winstdt/c2-results/{task_id}/`; it must never modify `/srv/winstdt/handoff/{task_id}`. The runner always supplies an explicit access-event path, so the analyzer cannot silently fall back to `data/access_events_fixture.json`.
+## Identity and fixtures
 
-Inputs are the original PCAP, real CAPE/capemon access events, a static IOC prior, and optional Suricata, TLS, or Zeek metadata. The upstream access-event contract is a JSON array whose entries contain `timestamp`, `data_type`, `api_call`, and optional `process`.
+The patched CLI accepts `--analysis-id`, `--sample-sha256`, `--pcap-sha256`, `--access-events`, `--access-events-source`, `--static-prior`, `--zeek-dir`, and `--validation-mode`. The submitted SHA-256 is canonical. Direct upstream use without identity flags retains legacy PCAP identity.
 
-Clock correction is applied from `behavior/clock-sync.json`. Host/network correlation is disabled when the measurement is missing or its uncertainty cannot support the analyzer's 15-second window. Network-only findings may still be produced and are labeled accordingly.
+Omitted access events mean `disabled`. A known fixture requires both `synthetic-test` and validation mode; the production wrapper never permits it. Real access events must have CAPE/capemon provenance and an eligible status file.
 
-Upstream commit `5d153d960fc101cdad171aa22f8cf434318d3202` is the current pin, and its Python environment is frozen in `config/c2-exfil-requirements.lock.txt`. Its 206-test suite passes locally with 196 tests passing and 10 optional tests skipped. A network-only integration run against immutable CAPE task 7 produced one weak beacon finding for `5.149.249.242:80`; fixture events were not used and host/network correlation was explicitly disabled because the older bundle lacks trustworthy access events.
+## Processing and output
 
-## Execution and updates
+Native Zeek is used only when the complete directory validates. A malformed directory triggers the upstream streamed fallback. Failed fallback preserves PCAP-only analysis. Provenance labels all three modes and never presents fallback as native-equivalent.
 
-Install dependencies into a dedicated virtual environment with `scripts/install-c2-analyzer.sh --execute`, then run `scripts/run-c2-analyzer.sh /srv/winstdt/handoff/123`. The runner validates the bundle, supplies explicit inputs, writes provenance with upstream and input hashes, and atomically promotes `/srv/winstdt/c2-results/{task_id}`.
+The runner validates the immutable handoff before analysis, snapshots all handoff hashes, supplies explicit inputs, optionally performs transactional PostgreSQL loading, normalizes analyzer files, rechecks the handoff, seals every regular result file in `hashes.sha256`, removes write bits, validates with `winstdt validate-c2-result`, and atomically promotes the task directory.
 
-Update only after reviewing a new upstream commit and from a clean worktree:
+Event confidence is `confirmed`, `strong`, `weak`, `unconfirmed`, or `allowlisted`. Attribution confidence is `confirmed`, `likely`, or `possible`; basis is `static_prior`, `threat_intel`, or `behavioural`. These are separate contracts.
 
-```text
-git subtree pull --prefix integrations/c2-exfil \
-  https://github.com/demistifying/C2-Exfil-E-Rakshak.git <reviewed-commit> --squash
-```
-
-Never place WinST/DT-specific changes inside the subtree.
-
-## Completion status
-
-The integration is sound for pinned, fixture-free network-only processing: the
-upstream suite passes, immutable task 7 was consumed successfully, inputs and
-outputs are hashed, and derived output is separated from the handoff. Full
-integration is not yet accepted. Remaining work is:
-
-- interpolate start/end guest clock measurements instead of averaging offsets;
-- corroborate classified capemon events with ETL rather than relying on
-  capemon alone;
-- pass Suricata and decrypted-traffic metadata through an upstream-supported
-  interface;
-- validate the static-prior extractor against known CAPA/CAPE IOC fixtures;
-- validate the emitted result bundle against a dedicated schema; and
-- complete one clock-valid run with non-empty real access events and a
-  demonstrated host/network correlation inside the 15-second window.
-
-The upstream repository currently has no license file in the pinned tree.
-Repository visibility alone does not grant redistribution rights; retain the
-project owner's explicit authorization and confirm licensing before distributing
-WinST/DT builds containing the subtree.
+The upstream tree currently has no explicit license file. The departmental authorization used for this deployment does not resolve licensing for third-party redistribution; downstream distributors must obtain their own appropriate permission.

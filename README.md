@@ -28,15 +28,13 @@ repository. The embedded copy is pinned and may lag upstream.
 
 ## Important network limitation
 
-**The fail-closed egress gateway is deployed, but controlled live-egress testing
-is not yet approved or available to analysis tasks.** Analyses must still use an
-isolated/drop route or simulated services. The gateway has passed a no-traffic
-lifecycle/expiry test; it has not passed the controlled-responder or CAPE task
-lifecycle acceptance tests.
+**The fail-closed gateway and private responder are deployed only for controlled
+validation.** The outside network has no libvirt forwarding element and the old
+NAT network has been removed. Public routing is unavailable. A full CAPE task is
+still gated on an operator-signed, single-use approval and the remaining
+end-to-end acceptance checks.
 
-Controlled live egress is under development. It must not be advertised or used
-until the remaining controlled-responder, guest-routing, capture-export, CAPE
-lifecycle, and end-to-end isolation tests have passed. See
+Do not advertise this as public or production isolation. See
 [`docs/controlled_egress_gateway.md`](docs/controlled_egress_gateway.md).
 
 Simulated networking can reveal attempted C2 destinations, connection cadence,
@@ -74,6 +72,7 @@ A successful CAPE task can produce:
     behavior/trace.etl
     behavior/clock-sync.json    # only when a valid per-task measurement exists
     behavior/access_events.json # classified, clock-corrected C2 input
+    behavior/access_events.status.json
     report.json
     report.html
     hashes.sha256
@@ -83,6 +82,21 @@ The raw ETL remains authoritative. CAPE/capemon calls are normalized into the
 analyzer's classified `access_events.json` contract when clock quality permits;
 raw `.etl` is not interchangeable with that interface. ETL corroboration and a
 clock-valid end-to-end host/network acceptance run remain pending.
+
+Validated derived output is separately promoted read-only:
+
+```text
+/srv/winstdt/c2-results/{task_id}/
+    inputs/
+    output/events.json
+    output/attribution.json
+    output/timeline.json
+    output/iocs/
+    zeek/
+    analyzer.log
+    provenance.json
+    hashes.sha256
+```
 
 ## Setup
 
@@ -137,6 +151,8 @@ winstdt validate-bundle /srv/winstdt/handoff/{task_id}
 winstdt report-bundle /srv/winstdt/handoff/{task_id} \
   --json report.json --html report.html
 winstdt compare-telemetry /srv/winstdt/handoff/{task_id}
+winstdt validate-c2-result /srv/winstdt/c2-results/{task_id} \
+  --handoff /srv/winstdt/handoff/{task_id}
 ```
 
 Whether an artifact exists and whether it contains useful behavior are separate
@@ -150,9 +166,11 @@ that no unpacked payload existed.
 - [Host and Windows guest bootstrap](docs/host_guest_bootstrap.md)
 - [CAPE handoff export](docs/cape_handoff_export.md)
 - [C2/Exfiltration integration](docs/c2_exfil_integration.md)
+- [Recommended controlled-egress architecture](docs/controlled_egress_architecture.md)
+- [Single-host gateway workaround](docs/controlled_egress_gateway.md)
+- [Harmless end-to-end validation](docs/end_to_end_validation.md)
 - [Anti-evasion qualification gate](docs/validation/anti_evasion_gate.md)
 - [Implementation plan](WinST-DT-Implementation-Plan.md)
-- [Evaluation report](WinST-DT-Evaluation-Report.md)
 
 ## Safety boundary
 
