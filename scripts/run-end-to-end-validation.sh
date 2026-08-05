@@ -36,6 +36,12 @@ trap cleanup EXIT INT TERM
 if [ "$(virsh domstate "$VM")" != 'shut off' ]; then
   virsh destroy "$VM" >/dev/null
 fi
+sudo systemctl restart cape.service
+for _attempt in $(seq 1 20); do
+  systemctl is-active --quiet cape.service && break
+  sleep 1
+done
+systemctl is-active --quiet cape.service || { echo 'CAPE scheduler did not restart cleanly' >&2; exit 1; }
 "$PROJECT_ROOT/scripts/manage-egress-run.sh" activate "$CONFIG"
 staged="$WINSTDT_ROOT/validation/$(basename "$FIXTURE")"
 sudo install -m 0644 -o "$CAPE_USER" -g "$CAPE_USER" "$FIXTURE" "$staged"
