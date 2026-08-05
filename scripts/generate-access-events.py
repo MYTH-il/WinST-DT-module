@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
-"""Convert real CAPE/capemon calls to the pinned analyzer contract."""
-import argparse, json
-from datetime import datetime, timezone
+"""Export schema-validated CAPE/capemon access events with clock provenance."""
+import argparse
+import json
+import sys
 from pathlib import Path
 
-API_TYPES={"CryptUnprotectData":"browser_credentials","BCryptDecrypt":"browser_credentials","SetWindowsHookExA":"keystrokes","SetWindowsHookExW":"keystrokes","GetAsyncKeyState":"keystrokes","BitBlt":"screenshot","CreateCompatibleBitmap":"screenshot","GetClipboardData":"clipboard","OpenClipboard":"clipboard","GetComputerNameExA":"system_info","GetComputerNameExW":"system_info","GetUserNameA":"system_info","GetUserNameW":"system_info","ReadFile":"file_access","CreateFileA":"file_access","CreateFileW":"file_access"}
-def timestamp(value, offset):
-    try:
-        dt=datetime.fromtimestamp(float(value),timezone.utc) if isinstance(value,(int,float)) else datetime.fromisoformat(str(value).replace("Z","+00:00"))
-        if dt.tzinfo is None: dt=dt.replace(tzinfo=timezone.utc)
-        return datetime.fromtimestamp(dt.timestamp()-offset/1e9,timezone.utc).isoformat().replace("+00:00","Z")
-    except (TypeError,ValueError,OSError): return None
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+from winstdt.access_events import write_access_event_artifacts  # noqa: E402
 
-p=argparse.ArgumentParser(); p.add_argument("report",type=Path); p.add_argument("clock_sync",type=Path); p.add_argument("output",type=Path); p.add_argument("--status",type=Path)
-a=p.parse_args(); report=json.loads(a.report.read_text()); clock=json.loads(a.clock_sync.read_text())
-measurements=clock.get("measurements",{}); quality=bool(clock.get("quality",{}).get("acceptable")) and bool(measurements)
-offsets=[int(v.get("guest_minus_host_ns",0)) for v in measurements.values()]; offset=int(sum(offsets)/len(offsets)) if offsets else 0
-events=[]
-if quality:
-    for proc in report.get("behavior",{}).get("processes",[]):
-        for call in proc.get("calls",[]):
-            api=str(call.get("api", "")); kind=API_TYPES.get(api); ts=timestamp(call.get("timestamp"),offset)
-            if kind and ts: events.append({"timestamp":ts,"data_type":kind,"api_call":api,"process":proc.get("process_name")})
-a.output.parent.mkdir(parents=True,exist_ok=True); a.output.write_text(json.dumps(events,indent=2)+"\n")
-status={"clock_quality_acceptable":quality,"host_network_correlation_enabled":quality and bool(events),"event_count":len(events),"reason":None if quality else "clock_quality_insufficient"}
-if a.status: a.status.parent.mkdir(parents=True,exist_ok=True); a.status.write_text(json.dumps(status,indent=2)+"\n")
+parser = argparse.ArgumentParser()
+parser.add_argument("report", type=Path)
+parser.add_argument("clock_sync", type=Path)
+parser.add_argument("output", type=Path)
+parser.add_argument("--status", type=Path)
+parser.add_argument("--etw-events", type=Path)
+args = parser.parse_args()
+report = json.loads(args.report.read_text(encoding="utf-8"))
+clock = json.loads(args.clock_sync.read_text(encoding="utf-8"))
+info = report.get("info", {})
+if not info.get("started") or not info.get("ended"):
+    raise SystemExit("CAPE report lacks the analysis start/end interval")
+etw = json.loads(args.etw_events.read_text(encoding="utf-8")) if args.etw_events else None
+status_path = args.status or args.output.with_name("access_events.status.json")
+write_access_event_artifacts(
+    args.output, status_path, report, clock, info["started"], info["ended"], etw,
+    PROJECT_ROOT / "schemas/access_events.schema.json",
+)

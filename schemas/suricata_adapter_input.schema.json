@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["schema_version","status","events","adapter_provenance"],"additionalProperties":false,"properties":{"schema_version":{"const":"1.0"},"status":{"enum":["available","not_available","invalid"]},"events":{"type":"array","items":{"type":"object"}},"adapter_provenance":{"type":"object"}}}

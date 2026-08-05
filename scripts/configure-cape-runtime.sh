@@ -390,6 +390,9 @@ chown '${CAPE_USER}:${CAPE_USER}' '$path'"
 
 install_reporting_overlay() {
   run_root install -d -m 0755 -o "$CAPE_USER" -g "$CAPE_USER" "$WINSTDT_ROOT/handoff"
+  run_root install -d -m 0755 "$CAPE_DIR/winstdt"
+  run_root install -m 0644 "$PROJECT_ROOT/winstdt/__init__.py" "$CAPE_DIR/winstdt/__init__.py"
+  run_root install -m 0644 "$PROJECT_ROOT/winstdt/access_events.py" "$CAPE_DIR/winstdt/access_events.py"
   run_root install -m 0644 "$PROJECT_ROOT/cape/modules/reporting/winstdt_handoff_export.py" "$CAPE_DIR/modules/reporting/winstdt_handoff_export.py"
   run_root install -d -m 0755 "$CAPE_DIR/analyzer/windows/modules/auxiliary"
   run_root install -m 0644 "$PROJECT_ROOT/cape/analyzer/windows/modules/auxiliary/winstdt_etw_pickup.py" "$CAPE_DIR/analyzer/windows/modules/auxiliary/winstdt_etw_pickup.py"

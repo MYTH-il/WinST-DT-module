@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 
 MODULE_PATH = (
     Path(__file__).resolve().parents[1]
@@ -186,8 +188,11 @@ class WinstdtHandoffExportTests(unittest.TestCase):
         (behavior / "trace.etl").write_bytes(b"etl bytes")
         clock_root = self.tempdir / "clock-sync"; clock_root.mkdir()
         (clock_root / "42.json").write_text(json.dumps({
-            "quality": {"acceptable": True},
-            "measurements": {"start": {"guest_minus_host_ns": 1_000_000_000}}
+            "quality": {"acceptable": True, "maximum_observed_uncertainty_ns": 1_000_000},
+            "measurements": {
+                "start": {"guest_minus_host_ns": 1_000_000_000, "uncertainty_ns": 1_000_000},
+                "end": {"guest_minus_host_ns": 1_000_000_000, "uncertainty_ns": 1_000_000}
+            }
         }))
         os.environ["WINSTDT_CLOCK_SYNC_ROOT"] = str(clock_root)
         self.addCleanup(os.environ.pop, "WINSTDT_CLOCK_SYNC_ROOT", None)
@@ -200,6 +205,9 @@ class WinstdtHandoffExportTests(unittest.TestCase):
         self.assertEqual(events, [{"timestamp": "2026-07-19T01:02:03Z", "data_type": "clipboard", "api_call": "GetClipboardData", "process": "sample.exe"}])
         manifest = json.loads((bundle / "manifest.json").read_text())
         self.assertTrue(manifest["correlation"]["host_network_correlation_enabled"])
+        status = json.loads((bundle / "behavior/access_events.status.json").read_text())
+        self.assertEqual(status["clock_algorithm"], "linear_start_end_interpolation")
+        self.assertEqual(status["source"], "cape_capemon")
 
 
 def sample_results():

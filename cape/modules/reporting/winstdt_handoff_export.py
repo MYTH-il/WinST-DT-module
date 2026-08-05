@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from winstdt.access_events import write_access_event_artifacts
+
 try:
     from lib.cuckoo.common.abstracts import Report
     from lib.cuckoo.common.exceptions import CuckooReportError
@@ -40,6 +42,7 @@ REPORT_JSON_PATH = "report.json"
 REPORT_HTML_PATH = "report.html"
 EVENTS_JSONL_PATH = "behavior/events.jsonl"
 ACCESS_EVENTS_PATH = "behavior/access_events.json"
+ACCESS_EVENTS_STATUS_PATH = "behavior/access_events.status.json"
 SIGNATURE_PATH = "integrity/signature.sha256"
 BASELINE_PROVIDERS = [
     "Microsoft-Windows-Kernel-Process",
@@ -139,7 +142,8 @@ def export_handoff_bundle(
         copy_if_present(package.etl_source, tmp_bundle / TRACE_ETL_PATH, options)
         copy_if_present(package.clock_sync_source, tmp_bundle / CLOCK_SYNC_PATH, options)
         access_status = write_access_events(
-            tmp_bundle / ACCESS_EVENTS_PATH, results, package.clock_sync_source
+            tmp_bundle / ACCESS_EVENTS_PATH, tmp_bundle / ACCESS_EVENTS_STATUS_PATH,
+            results, package.clock_sync_source, analysis_path
         )
 
         profile, resolved_options = resolve_profile(results, options.default_profile)
@@ -344,6 +348,7 @@ def build_manifest(
             "report_json": REPORT_JSON_PATH,
             "report_html": REPORT_HTML_PATH,
             "access_events": ACCESS_EVENTS_PATH,
+            "access_events_status": ACCESS_EVENTS_STATUS_PATH,
             **({"clock_sync": CLOCK_SYNC_PATH} if usable_file(package.clock_sync_source) else {}),
         },
         "integrity": {
@@ -824,34 +829,29 @@ ACCESS_API_TYPES = {
 }
 
 
-def write_access_events(path: Path, results: dict[str, Any], clock_path: Path | None) -> dict[str, Any]:
+def write_access_events(path: Path, status_path: Path, results: dict[str, Any],
+                        clock_path: Path | None, analysis_path: Path) -> dict[str, Any]:
     clock = read_first_json([clock_path] if clock_path else [])
-    quality = as_dict(clock.get("quality"))
-    measurements = as_dict(clock.get("measurements"))
-    acceptable = bool(quality.get("acceptable")) and bool(measurements)
-    offsets = [int(as_dict(v).get("guest_minus_host_ns", 0)) for v in measurements.values()]
-    offset_ns = int(sum(offsets) / len(offsets)) if offsets else 0
-    events = []
-    if acceptable:
-        behavior = as_dict(results.get("behavior"))
-        for process in behavior.get("processes", []) if isinstance(behavior.get("processes"), list) else []:
-            proc = as_dict(process)
-            for call in proc.get("calls", []) if isinstance(proc.get("calls"), list) else []:
-                item = as_dict(call)
-                api = first_text(item.get("api"))
-                data_type = ACCESS_API_TYPES.get(api)
-                if not data_type:
-                    continue
-                timestamp = corrected_timestamp(item.get("timestamp"), offset_ns)
-                if timestamp:
-                    events.append({"timestamp": timestamp, "data_type": data_type,
-                                   "api_call": api, "process": first_text(proc.get("process_name")) or None})
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(events, indent=2) + "\n", encoding="utf-8")
-    return {"access_events_path": ACCESS_EVENTS_PATH, "event_count": len(events),
-            "clock_quality_acceptable": acceptable,
-            "host_network_correlation_enabled": acceptable and bool(events),
-            "reason": None if acceptable else "clock_quality_insufficient"}
+    info = as_dict(results.get("info"))
+    etw = read_first_json([
+        analysis_path / "behavior/etw-events.json",
+        analysis_path / "winstdt/etw-events.json",
+    ])
+    etw_events = etw.get("events") if isinstance(etw.get("events"), list) else None
+    status = write_access_event_artifacts(
+        path, status_path, results, clock, info.get("started"), info.get("ended"), etw_events
+    )
+    return {
+        "access_events_path": ACCESS_EVENTS_PATH,
+        "access_events_status_path": ACCESS_EVENTS_STATUS_PATH,
+        "event_count": status["event_count"],
+        "source": status["source"],
+        "etw_corroboration_state": status["etw_corroboration_state"],
+        "clock_algorithm": status["clock_algorithm"],
+        "maximum_uncertainty_ns": status["maximum_uncertainty_ns"],
+        "host_network_correlation_enabled": status["correlation_eligible"],
+        "reason_code": status["reason_code"],
+    }
 
 
 def corrected_timestamp(value: Any, guest_minus_host_ns: int) -> str | None:
