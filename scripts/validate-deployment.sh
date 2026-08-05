@@ -33,6 +33,18 @@ done
 
 log() { printf '[winstdt-validation] %s\n' "$*"; }
 
+"$PROJECT_ROOT/scripts/repair-libvirt-runtime.sh" --validate-only
+
+restart_limit="${WINSTDT_CAPE_MAX_RESTARTS:-3}"
+for service in cape cape-processor cape-rooter; do
+  restarts="$(systemctl show -p NRestarts --value "$service" 2>/dev/null || echo 0)"
+  [[ "$restarts" =~ ^[0-9]+$ ]] || restarts=0
+  [ "$restarts" -le "$restart_limit" ] || {
+    echo "CAPE restart-loop threshold exceeded: $service restarts=$restarts limit=$restart_limit" >&2
+    exit 1
+  }
+done
+
 for service in mongod cape cape-processor cape-rooter cape-web inetsim libvirtd; do
   systemctl is-active --quiet "$service" || { echo "inactive service: $service" >&2; exit 1; }
 done
@@ -102,4 +114,3 @@ done
 
 echo "timed out waiting for handoff for task $task_id (last status: $last_status)" >&2
 exit 1
-

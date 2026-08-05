@@ -531,9 +531,15 @@ phase_apt() {
     /usr/lib/systemd/system/virtproxyd.service \
     /usr/lib/systemd/system/virtproxyd.socket \
     /usr/lib/systemd/system/virtproxyd-ro.socket \
-    /usr/lib/systemd/system/virtproxyd-admin.socket; do
+    /usr/lib/systemd/system/virtproxyd-admin.socket \
+    /usr/lib/systemd/system/virtstoraged.service \
+    /usr/lib/systemd/system/virtstoraged.socket \
+    /usr/lib/systemd/system/virtstoraged-ro.socket \
+    /usr/lib/systemd/system/virtstoraged-admin.socket; do
     quarantine_if_unowned "$key" "$source_libvirt_backup" "$source_libvirt_path" || return 1
   done
+  run_root_logged "$key" systemctl disable --now virtstoraged.service virtstoraged.socket \
+    virtstoraged-ro.socket virtstoraged-admin.socket || true
   run_root_logged "$key" systemctl daemon-reload || true
 
   if command -v qemu-system-x86_64 >/dev/null 2>&1; then
