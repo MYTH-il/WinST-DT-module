@@ -21,14 +21,21 @@ echo "Validated plan: run=$run_id fixture_sha256=$fixture_sha VM=$VM snapshot=$S
 evidence="$WINSTDT_ROOT/validation/end-to-end/$run_id"
 sudo install -d -m 0750 -o "$(id -u)" -g "$(id -g)" "$evidence"
 task_id=""; revoked=0; reverted=0
+revert_and_stop() {
+  virsh snapshot-revert "$VM" "$SNAPSHOT" --running >/dev/null || return 1
+  virsh destroy "$VM" >/dev/null || return 1
+}
 cleanup() {
   set +e
   "$PROJECT_ROOT/scripts/manage-egress-run.sh" revoke end-to-end-cleanup
   revoked=1
   if [ -n "$task_id" ]; then "$PROJECT_ROOT/scripts/manage-egress-run.sh" collect "$run_id" "$evidence"; fi
-  virsh snapshot-revert "$VM" "$SNAPSHOT" --running >/dev/null && reverted=1
+  revert_and_stop && reverted=1
 }
 trap cleanup EXIT INT TERM
+if [ "$(virsh domstate "$VM")" != 'shut off' ]; then
+  virsh destroy "$VM" >/dev/null
+fi
 "$PROJECT_ROOT/scripts/manage-egress-run.sh" activate "$CONFIG"
 staged="$WINSTDT_ROOT/validation/$(basename "$FIXTURE")"
 sudo install -m 0644 -o "$CAPE_USER" -g "$CAPE_USER" "$FIXTURE" "$staged"
@@ -58,7 +65,7 @@ WINSTDT_POSTGRES_ENABLED=1 "$PROJECT_ROOT/scripts/run-c2-analyzer.sh" "$bundle"
 result="$WINSTDT_ROOT/c2-results/$task_id"
 "$WINSTDT_ROOT/bin/winstdt" validate-c2-result "$result" --handoff "$bundle"
 grep -Rqs 'WINSTDT controlled validation canary' "$bundle/network/suricata"
-virsh snapshot-revert "$VM" "$SNAPSHOT" --running >/dev/null; reverted=1
+revert_and_stop; reverted=1
 status_output="$("$PROJECT_ROOT/scripts/manage-egress-run.sh" status)"
 printf '%s' "$status_output" | grep -q '"active_run":null'
 printf '%s' "$status_output" | grep -A5 'chain forward' | grep -q 'policy drop'
