@@ -18,7 +18,8 @@ test ! -e "$WINSTDT_ROOT/c2-results"/"$run_id"
 curl --fail --silent --max-time 3 http://192.168.125.10:8080/receipts >/dev/null
 echo "Validated plan: run=$run_id fixture_sha256=$fixture_sha VM=$VM snapshot=$SNAPSHOT"
 [ "$EXECUTE" -eq 1 ] || { echo 'Dry run only. Re-run with --execute.'; exit; }
-evidence="$WINSTDT_ROOT/validation/end-to-end/$run_id"; install -d -m 0750 "$evidence"
+evidence="$WINSTDT_ROOT/validation/end-to-end/$run_id"
+sudo install -d -m 0750 -o "$(id -u)" -g "$(id -g)" "$evidence"
 task_id=""; revoked=0; reverted=0
 cleanup() {
   set +e
@@ -30,7 +31,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 "$PROJECT_ROOT/scripts/manage-egress-run.sh" activate "$CONFIG"
 staged="$WINSTDT_ROOT/validation/$(basename "$FIXTURE")"
-install -m 0644 -o "$CAPE_USER" -g "$CAPE_USER" "$FIXTURE" "$staged"
+sudo install -m 0644 -o "$CAPE_USER" -g "$CAPE_USER" "$FIXTURE" "$staged"
 submit="$(sudo -u "$CAPE_USER" bash -lc "cd '$CAPE_DIR' && /etc/poetry/bin/poetry run python utils/submit.py --machine '$VM' --platform windows --timeout 180 --enforce-timeout --route none --options arguments='$run_id' '$staged'")"
 task_id="$(printf '%s\n' "$submit" | sed -n 's/.*task with ID \([0-9][0-9]*\).*/\1/p' | tail -n1)"
 test -n "$task_id" || { echo "could not parse CAPE task: $submit" >&2; exit 1; }
