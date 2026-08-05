@@ -75,19 +75,10 @@ test "$(sudo sha512sum "$base_image" | awk '{print $1}')" = "$image_sha" || {
   exit 1
 }
 
-network_xml="$(mktemp)"
+network_xml="$PROJECT_ROOT/config/libvirt/winstdt-controlled-services.xml"
 seed_dir="$(mktemp -d)"
-trap 'rm -f -- "$network_xml"; rm -rf -- "$seed_dir"' EXIT
-cat >"$network_xml" <<EOF
-<network>
-  <name>$external_network</name>
-  <forward mode='nat'/>
-  <bridge name='virbr-wext' stp='on' delay='0'/>
-  <ip address='192.168.124.1' netmask='255.255.255.0'>
-    <dhcp><range start='192.168.124.100' end='192.168.124.200'/></dhcp>
-  </ip>
-</network>
-EOF
+trap 'rm -rf -- "$seed_dir"' EXIT
+grep -q '<forward' "$network_xml" && { echo 'controlled-services network must not forward' >&2; exit 1; }
 if ! virsh net-info "$external_network" >/dev/null 2>&1; then
   virsh net-define "$network_xml"
 fi
@@ -111,7 +102,7 @@ ethernets:
   external:
     match: {macaddress: "$external_mac"}
     set-name: eth1
-    dhcp4: true
+    addresses: [192.168.125.254/24]
 EOF
 cat >"$seed_dir/user-data" <<EOF
 #cloud-config
@@ -199,6 +190,12 @@ write_files:
       now="\$(date +%s)"; duration="\$((expires-now))"
       test "\$duration" -gt 0 && test "\$duration" -le 86400
       /usr/local/sbin/winstdt-egress-revoke replacement
+      approval="\$(jq -r .approval_id "\$metadata")"
+      case "\$approval" in ''|null|*[!A-Za-z0-9_.-]*) exit 1 ;; esac
+      install -d -m 0750 /var/lib/winstdt-egress/consumed-approvals
+      mkdir "/var/lib/winstdt-egress/consumed-approvals/\$approval" 2>/dev/null || {
+        echo "approval already consumed: \$approval" >&2; exit 1;
+      }
       dest="/var/lib/winstdt-egress/runs/\$run"
       install -d -m 0750 "\$dest"
       install -m 0640 "\$metadata" "\$dest/metadata.json"
@@ -220,7 +217,7 @@ write_files:
       #!/bin/ash
       set -euo pipefail
       if [ -f /var/lib/winstdt-egress/current/metadata.json ]; then
-        jq '{run_id,approval_id,expires_at_utc,destinations,dns}' /var/lib/winstdt-egress/current/metadata.json
+        jq '{run_id,approval_id,expires_at_utc,destinations,dns,policy_sha256:.approval.policy_sha256}' /var/lib/winstdt-egress/current/metadata.json
       else
         echo '{"status":"default_deny","active_run":null}'
       fi

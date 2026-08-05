@@ -3,10 +3,15 @@
   "internal_interface": "eth0",
   "external_interface": "eth1",
   "guest_ip": "10.66.0.101",
-  "destinations": [{"ip":"192.0.2.10","protocol":"tcp","port":443}],
-  "dns": {"name":"test.invalid","pinned_ip":"192.0.2.10"},
-  "expires_at_utc": "2026-08-04T12:00:00Z",
+  "destinations": [{"ip":"192.168.125.10","protocol":"tcp","port":8080}],
+  "dns": {"name":"validation.winstdt.test","pinned_ip":"192.168.125.10"},
+  "expires_at_utc": "2099-01-01T00:05:00Z",
   "max_connections": 8,
   "max_bytes": 10485760,
-  "approval_id": "REQUIRED"
+  "approval": {
+    "approval_id": "REQUIRED",
+    "signer_identity": "REQUIRED",
+    "policy_sha256": "REQUIRED",
+    "signature_path": "approval.sig"
+  }
 }

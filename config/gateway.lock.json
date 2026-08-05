@@ -15,7 +15,20 @@
     "internal_network": "winstdt-isolated",
     "internal_ipv4": "10.66.0.254/24",
     "internal_mac": "52:54:00:66:00:fe",
-    "external_network": "winstdt-external",
+    "external_network": "winstdt-controlled-services",
+    "external_ipv4": "192.168.125.254/24",
     "external_mac": "52:54:00:67:00:02"
+  },
+  "responder": {
+    "name": "winstdt-controlled-responder",
+    "vcpus": 1,
+    "memory_mib": 256,
+    "disk_gib": 2,
+    "network": "winstdt-controlled-services",
+    "ipv4": "192.168.125.10/24",
+    "mac": "52:54:00:7d:00:0a",
+    "hostname": "validation.winstdt.test",
+    "http_port": 8080,
+    "https_port": 8443
   }
 }

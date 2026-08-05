@@ -1,0 +1,10 @@
+#!/bin/ash
+set -euo pipefail
+run="$1"; metadata="$6"
+approval="$(jq -r .approval_id "$metadata")"
+case "$approval" in ''|null|*[!A-Za-z0-9_.-]*) echo 'invalid approval id' >&2; exit 1;; esac
+install -d -m 0750 /var/lib/winstdt-egress/consumed-approvals
+mkdir "/var/lib/winstdt-egress/consumed-approvals/$approval" 2>/dev/null || {
+  echo "approval already consumed: $approval" >&2; exit 1;
+}
+exec /usr/local/libexec/winstdt-egress-activate-legacy "$@"

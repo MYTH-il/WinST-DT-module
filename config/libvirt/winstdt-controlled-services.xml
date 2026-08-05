@@ -1,0 +1,11 @@
+<network>
+  <name>winstdt-controlled-services</name>
+  <bridge name="virbr-wctl" stp="on" delay="0"/>
+  <ip address="192.168.125.1" netmask="255.255.255.0">
+    <dhcp>
+      <range start="192.168.125.100" end="192.168.125.200"/>
+      <host mac="52:54:00:67:00:02" name="winstdt-egress-gateway" ip="192.168.125.254"/>
+      <host mac="52:54:00:7d:00:0a" name="winstdt-controlled-responder" ip="192.168.125.10"/>
+    </dhcp>
+  </ip>
+</network>

@@ -1,0 +1,1 @@
+alert http any any -> 192.168.125.10 8080 (msg:"WINSTDT controlled validation canary"; flow:to_server,established; http.request_body; content:"WINSTDT-CONTROLLED-CANARY/1"; sid:9900010; rev:1;)
