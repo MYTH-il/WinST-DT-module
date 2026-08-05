@@ -149,7 +149,8 @@ def render(config: dict) -> str:
         )
         lines.extend([
             f"  {match} quota name run_quota_{index} counter drop",
-            f"  {match} ct state new limit rate {config['max_connections']}/minute counter accept",
+            f"  {match} ct state new limit rate {config['max_connections']}/minute "
+            f"burst {config['max_connections']} packets counter accept",
             f"  {match} ct state established counter accept",
         ])
     lines.extend([

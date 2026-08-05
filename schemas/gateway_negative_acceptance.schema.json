@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_group", "started_at_utc", "ended_at_utc", "probe_ip", "public_route_absent", "captures_preserved", "gateway_revoked", "tests", "status"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_group": {"type": "string", "minLength": 1},
+    "started_at_utc": {"type": "string", "format": "date-time"},
+    "ended_at_utc": {"type": "string", "format": "date-time"},
+    "probe_ip": {"const": "10.66.0.102"},
+    "public_route_absent": {"const": true},
+    "captures_preserved": {"const": true},
+    "gateway_revoked": {"const": true},
+    "tests": {
+      "type": "object",
+      "additionalProperties": {"enum": ["passed", "failed"]},
+      "required": ["approved_destination", "wrong_destination", "wrong_port", "policy_expiry_open_connection", "byte_quota", "connection_ceiling", "dns_pin", "dns_bypass", "responder_unavailable", "emergency_stop"]
+    },
+    "status": {"enum": ["passed", "failed"]}
+  }
+}

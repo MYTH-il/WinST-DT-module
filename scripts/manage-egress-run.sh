@@ -40,10 +40,9 @@ case "${1:-}" in
   collect)
     run_id="${2:?run id required}"; destination="${3:?destination required}"
     [[ "$run_id" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$ ]] || { echo 'invalid run id' >&2; exit 2; }
-    mkdir -p "$destination"
-    scp -q -r -i "$GATEWAY_KEY" -o UserKnownHostsFile="$GATEWAY_KNOWN_HOSTS" \
-      -o StrictHostKeyChecking=accept-new \
-      "$GATEWAY_USER@$GATEWAY_IP:/var/lib/winstdt-egress/runs/$run_id" "$destination/gateway"
+    mkdir -p "$destination/gateway"
+    "${SSH[@]}" sudo tar -C "/var/lib/winstdt-egress/runs/$run_id" -cf - . | \
+      tar -C "$destination/gateway" -xf -
     curl --fail --silent --show-error --max-time 10 \
       http://192.168.125.10:8080/receipts >"$destination/responder-receipts.jsonl"
     (cd "$destination" && find gateway -type f -print0 | sort -z | xargs -0 sha256sum >gateway-hashes.sha256)

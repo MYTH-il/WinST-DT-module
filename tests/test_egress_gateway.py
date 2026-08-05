@@ -44,6 +44,7 @@ class EgressGatewayTests(unittest.TestCase):
         self.assertIn("ip daddr 192.168.125.10 tcp dport 8080", rules)
         self.assertIn("quota run_quota_1", rules)
         self.assertIn("quota name run_quota_1 counter drop", rules)
+        self.assertIn("limit rate 8/minute burst 8 packets", rules)
         self.assertIn("ct state established counter accept", rules)
         self.assertNotIn(
             'ip saddr 10.66.0.101 ct state established,related counter accept', rules)
