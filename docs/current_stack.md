@@ -7,7 +7,7 @@ Status date: 2026-08-05. `Working` means a current acceptance record exists; sof
 | Ubuntu 24.04 monolithic libvirt runtime | Working on demand | Packaged `libvirtd`, socket, networks, and both original domains validated after stale modular units were quarantined |
 | Two-reboot libvirt persistence | Degraded | Run `validate-libvirt-reboots.sh` after two distinct operator-initiated boots |
 | CAPE service stability | Working on demand | Services are active after live repair; reboot persistence remains coupled to the two-reboot gate |
-| Windows guest and snapshot | Working on demand | The reviewed `hardened-baseline-antievasion-v1` parent and controlled-network derivative `hardened-baseline-controlled-egress-v1` are queryable |
+| Windows guest and snapshot | Working on demand | The reviewed `hardened-baseline-antievasion-v1` parent and gateway-DNS derivative `hardened-baseline-controlled-egress-v2` are queryable |
 | CAPE/capemon and PCAP/ETL handoff | Working on demand | Existing completed controlled validation evidence; every new task remains independently validated |
 | Detect It Easy 3.10 | Working | [acceptance:die_3_10] Official package hash, exact version, database access, PE positive, and text negative validated live |
 | CAPA/FLOSS/TRiD/Volatility | Degraded | Installed or profile-gated; completed-task positives remain required where indicated in `analysis_capabilities.md` |
