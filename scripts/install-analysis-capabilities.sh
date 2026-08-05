@@ -33,9 +33,68 @@ fi
 capa="$(read_lock tools.flare_capa.version)"
 floss="$(read_lock tools.floss.version)"
 vol="$(read_lock tools.volatility3.version)"
+die_version="$(read_lock tools.diec.version)"
+die_url="$(read_lock tools.diec.url)"
+die_sha256="$(read_lock tools.diec.sha256)"
+die_binary="$(read_lock tools.diec.binary)"
+die_database="$(read_lock tools.diec.signature_database)"
 run install -d -m 0750 -o "$CAPE_USER" -g "$CAPE_USER" "$WINSTDT_ROOT/rules/capa" "$WINSTDT_ROOT/rules/suricata" "$WINSTDT_ROOT/symbols/volatility" "$WINSTDT_ROOT/backups/cape"
 run -u "$CAPE_USER" bash -lc "cd '$CAPE_DIR' && /etc/poetry/bin/poetry run pip install 'flare-capa==$capa' 'flare-floss==$floss' 'volatility3==$vol'"
-run apt-get install -y suricata suricata-update jq unzip
+run apt-get install -y ca-certificates curl gcc-mingw-w64-x86-64 suricata suricata-update jq unzip
+
+die_cache="$WINSTDT_ROOT/cache/die/die_${die_version}_Ubuntu_24.04_amd64.deb"
+run install -d -m 0750 "$(dirname "$die_cache")"
+if [ "$EXECUTE" -eq 1 ]; then
+  if sudo test -e "$die_cache"; then
+    cached_sha="$(sudo sha256sum "$die_cache" | awk '{print $1}')"
+    [ "$cached_sha" = "$die_sha256" ] || {
+      echo "cached DIE package hash mismatch: expected=$die_sha256 actual=$cached_sha" >&2
+      exit 1
+    }
+  else
+    run curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+      --connect-timeout 15 --max-time 180 --output "$die_cache.part" "$die_url"
+    downloaded_sha="$(sudo sha256sum "$die_cache.part" | awk '{print $1}')"
+    [ "$downloaded_sha" = "$die_sha256" ] || {
+      echo "downloaded DIE package hash mismatch: expected=$die_sha256 actual=$downloaded_sha" >&2
+      exit 1
+    }
+    run mv "$die_cache.part" "$die_cache"
+  fi
+  # apt may resolve dependencies, but the only DIE payload it receives is the
+  # already verified local package. Existing conffiles are retained.
+  run env DEBIAN_FRONTEND=noninteractive apt-get \
+    -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+    install -y --no-install-recommends "$die_cache"
+  test -x "$die_binary" || { echo "DIE binary missing after install: $die_binary" >&2; exit 1; }
+  version_output="$("$die_binary" --version 2>&1)"
+  printf '%s\n' "$version_output" | grep -Fq "$die_version" || {
+    echo "unexpected DIE version output: $version_output" >&2
+    exit 1
+  }
+  sudo -u "$CAPE_USER" test -r "$die_database" || {
+    echo "CAPE processor cannot read DIE signature database: $die_database" >&2
+    exit 1
+  }
+  die_fixture_dir="$(mktemp -d)"
+  trap 'rm -rf -- "$die_fixture_dir"' EXIT
+  chmod 0755 "$die_fixture_dir"
+  x86_64-w64-mingw32-gcc -Os -s \
+    "$PROJECT_ROOT/tests/fixtures/die/known-positive.c" -o "$die_fixture_dir/known-positive.exe"
+  chmod 0644 "$die_fixture_dir/known-positive.exe"
+  positive_output="$(sudo -u "$CAPE_USER" "$die_binary" "$die_fixture_dir/known-positive.exe" 2>&1)"
+  printf '%s\n' "$positive_output" | grep -Eq '^PE(32|64)?$' || {
+    echo "DIE did not identify the known-positive PE fixture: $positive_output" >&2
+    exit 1
+  }
+  negative_output="$(sudo -u "$CAPE_USER" "$die_binary" "$PROJECT_ROOT/tests/fixtures/die/known-negative.txt" 2>&1 || true)"
+  printf '%s\n' "$positive_output" >"$die_fixture_dir/positive.out"
+  printf '%s\n' "$negative_output" >"$die_fixture_dir/negative.out"
+  if printf '%s\n' "$negative_output" | grep -Eiq 'PE32|Portable executable'; then
+    echo 'DIE incorrectly classified the negative text fixture as a PE executable' >&2
+    exit 1
+  fi
+fi
 run install -d -m 0755 "$CAPE_DIR/custom/conf/processing.conf.d" "$CAPE_DIR/custom/conf/integrations.conf.d" "$CAPE_DIR/custom/conf/auxiliary.conf.d" "$CAPE_DIR/custom/conf/memory.conf.d"
 run install -m 0644 "$PROJECT_ROOT/cape/custom/conf/processing.conf.d/winstdt_analysis.conf" "$CAPE_DIR/custom/conf/processing.conf.d/winstdt_analysis.conf"
 run install -m 0644 "$PROJECT_ROOT/cape/custom/conf/integrations.conf.d/winstdt_analysis.conf" "$CAPE_DIR/custom/conf/integrations.conf.d/winstdt_analysis.conf"

@@ -18,6 +18,15 @@ expected="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cap
 actual="$(git -c safe.directory="$CAPE_DIR" -C "$CAPE_DIR" rev-parse HEAD 2>/dev/null || true)"
 [ "$actual" = "$expected" ] && pass "CAPE revision $expected" || fail "CAPE revision expected=$expected actual=${actual:-missing}"
 selected die && check_cmd diec
+if selected die && command -v diec >/dev/null 2>&1; then
+  die_version="$(lock_value tools.diec.version)"
+  die_binary="$(lock_value tools.diec.binary)"
+  die_database="$(lock_value tools.diec.signature_database)"
+  "$die_binary" --version 2>&1 | grep -Fq "$die_version" \
+    && pass "DIE version $die_version" || fail "unexpected DIE version"
+  sudo -u "${CAPE_USER:-cape}" test -r "$die_database" \
+    && pass 'DIE signature database readable by processor' || fail 'DIE signature database unreadable by processor'
+fi
 selected suricata && check_cmd suricata
 if selected trid; then
   test -x "$CAPE_DIR/data/trid/trid" && pass 'TRiD executable' || fail 'TRiD executable missing/not executable'

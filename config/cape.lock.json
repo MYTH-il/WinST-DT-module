@@ -7,7 +7,13 @@
   "tools": {
     "flare_capa": { "version": "9.3.1" },
     "floss": { "version": "3.1.1" },
-    "diec": { "version": "3.10" },
+    "diec": {
+      "version": "3.10",
+      "url": "https://github.com/horsicq/DIE-engine/releases/download/3.10/die_3.10_Ubuntu_24.04_amd64.deb",
+      "sha256": "a64d32fcd95ab5c25cfb01f2e0355f67737eff93d6ae34c80b2b3dbdee721b1b",
+      "binary": "/usr/bin/diec",
+      "signature_database": "/usr/lib/die/db/"
+    },
     "suricata": { "version": "7.0.17" },
     "mitmproxy": { "version": "12.1.1" },
     "volatility3": { "version": "2.11.0" }
