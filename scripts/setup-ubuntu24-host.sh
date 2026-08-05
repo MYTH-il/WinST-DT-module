@@ -21,6 +21,8 @@ DHCP_START="${DHCP_START:-10.66.0.100}"
 DHCP_END="${DHCP_END:-10.66.0.200}"
 GUEST_NETWORK_CIDR="${GUEST_NETWORK_CIDR:-10.66.0.0/24}"
 GUEST_IP="${GUEST_IP:-10.66.0.101}"
+CONTROLLED_RESPONDER_HOSTNAME="${CONTROLLED_RESPONDER_HOSTNAME:-validation.winstdt.test}"
+CONTROLLED_RESPONDER_IP="${CONTROLLED_RESPONDER_IP:-192.168.125.10}"
 WINDOWS_ISO_MOUNT="${WINDOWS_ISO_MOUNT:-/mnt/winstdt-win10-iso}"
 VM_NAME="${VM_NAME:-winstdt-win10-22h2}"
 VM_CPUS="${VM_CPUS:-4}"
@@ -640,6 +642,13 @@ phase_network() {
   local key="$1"
   if libvirt_network_active; then
     echo "Network already defined and active: $NETWORK_NAME" >>"${PHASE_LOG[$key]}"
+    if ! env LD_LIBRARY_PATH="$SYSTEM_LIB_PATH" virsh -c "$LIBVIRT_URI" net-dumpxml "$NETWORK_NAME" | \
+      grep -q "<hostname>${CONTROLLED_RESPONDER_HOSTNAME}</hostname>"; then
+      run_root_logged "$key" env LD_LIBRARY_PATH="$SYSTEM_LIB_PATH" virsh -c "$LIBVIRT_URI" net-update \
+        "$NETWORK_NAME" add-last dns-host \
+        "<host ip='${CONTROLLED_RESPONDER_IP}'><hostname>${CONTROLLED_RESPONDER_HOSTNAME}</hostname></host>" \
+        --live --config || return 1
+    fi
     configure_qemu_bridge_helper "$key" || return 1
     STATUS["$key"]="skipped"
     DETAIL["$key"]="network already defined and active"
@@ -664,6 +673,9 @@ phase_network() {
 <network>
   <name>${NETWORK_NAME}</name>
   <bridge name="${BRIDGE_NAME}" stp="on" delay="0"/>
+  <dns>
+    <host ip="${CONTROLLED_RESPONDER_IP}"><hostname>${CONTROLLED_RESPONDER_HOSTNAME}</hostname></host>
+  </dns>
   <ip address="${HOST_IP}" netmask="${NETMASK}">
     <dhcp>
       <range start="${DHCP_START}" end="${DHCP_END}"/>

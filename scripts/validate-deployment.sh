@@ -34,6 +34,13 @@ done
 log() { printf '[winstdt-validation] %s\n' "$*"; }
 
 "$PROJECT_ROOT/scripts/repair-libvirt-runtime.sh" --validate-only
+network_xml="$(virsh net-dumpxml winstdt-isolated)"
+grep -q '<hostname>validation.winstdt.test</hostname>' <<<"$network_xml" || {
+  echo 'isolated network is missing the controlled responder DNS pin' >&2; exit 1;
+}
+grep -q "<host ip='192.168.125.10'>" <<<"$network_xml" || {
+  echo 'controlled responder DNS pin has the wrong address' >&2; exit 1;
+}
 
 restart_limit="${WINSTDT_CAPE_MAX_RESTARTS:-3}"
 for service in cape cape-processor cape-rooter; do
