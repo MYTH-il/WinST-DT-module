@@ -45,12 +45,24 @@ for service in cape cape-processor cape-rooter; do
   }
 done
 
-for service in mongod cape cape-processor cape-rooter cape-web inetsim libvirtd; do
+for service in cape cape-processor cape-rooter cape-web inetsim libvirtd; do
   systemctl is-active --quiet "$service" || { echo "inactive service: $service" >&2; exit 1; }
 done
+systemctl is-active --quiet mongodb.service || systemctl is-active --quiet mongod.service || {
+  echo 'neither supported MongoDB service unit is active' >&2; exit 1;
+}
 test -x "$WINSTDT_ROOT/bin/winstdt"
 test -f "$PROJECT_ROOT/scripts/validation/Invoke-BenignDetonation.ps1"
 curl --max-time 10 -fsS "$CAPE_API/" >/dev/null
+python3 - "$CAPE_DIR/conf/routing.conf" <<'PY'
+import configparser,sys
+config=configparser.ConfigParser(); config.read(sys.argv[1])
+if not config.getboolean('routing','enable_pcap',fallback=False):
+    raise SystemExit('CAPE routing.enable_pcap must be yes for controlled route-none capture')
+PY
+sudo -u "$CAPE_USER" sudo --list --non-interactive /usr/bin/tcpdump >/dev/null || {
+  echo 'CAPE processor account cannot invoke the configured tcpdump capture command' >&2; exit 1;
+}
 log "preflight passed; route=$ROUTE machine=$VM_NAME"
 
 if [ "$EXECUTE" -eq 0 ]; then
