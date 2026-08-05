@@ -151,8 +151,8 @@ stage_alternate_agent() {
 }
 
 validate_modern_agent_port() {
-  local attempt
-  for attempt in $(seq 1 30); do
+  local _attempt
+  for _attempt in $(seq 1 30); do
     if agent_json "$MODERN_AGENT_PORT" >/tmp/winstdt-modern-agent.json 2>/dev/null; then
       local json version features
       json="$(cat /tmp/winstdt-modern-agent.json)"

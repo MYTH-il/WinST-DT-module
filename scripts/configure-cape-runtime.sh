@@ -202,7 +202,7 @@ harden_libvirt_domain_definition() {
   tmp_in="$(mktemp)"
   tmp_out="$(mktemp)"
   env LD_LIBRARY_PATH="$SYSTEM_LIB_PATH" virsh -c "$LIBVIRT_URI" dumpxml --inactive "$name" >"$tmp_in"
-  VM_CPUS="$VM_CPUS" python3 "$PROJECT_ROOT/scripts/harden-libvirt-domain.py" --input "$tmp_in" --output "$tmp_out" --cpus "$VM_CPUS"
+  python3 "$PROJECT_ROOT/scripts/harden-libvirt-domain.py" --input "$tmp_in" --output "$tmp_out" --cpus "$VM_CPUS"
   run_root_shell "env LD_LIBRARY_PATH='$SYSTEM_LIB_PATH' virsh -c '$LIBVIRT_URI' define '$tmp_out'"
   rm -f "$tmp_in" "$tmp_out"
 }
@@ -210,8 +210,9 @@ harden_libvirt_domain_definition() {
 backup_file() {
   local path="$1"
   if [ -f "$path" ]; then
-    local relative="${path#${CAPE_DIR}/}"
-    local destination="$WINSTDT_ROOT/backups/cape/$(date -u +%Y%m%dT%H%M%SZ)/$relative"
+    local relative="${path#"${CAPE_DIR}"/}"
+    local destination
+    destination="$WINSTDT_ROOT/backups/cape/$(date -u +%Y%m%dT%H%M%SZ)/$relative"
     run_root install -d -m 0750 -o "$CAPE_USER" -g "$CAPE_USER" "$(dirname "$destination")"
     run_root cp -a "$path" "$destination"
   fi
@@ -422,7 +423,8 @@ chown '${CAPE_USER}:${CAPE_USER}' '$CAPE_DIR/conf/reporting.conf'"
 
 repair_python_libvirt() {
   local py_site="/usr/local/lib/python3.12/dist-packages"
-  local backup="/usr/local/lib/python3.12/winstdt-disabled-libvirt-$(date -u +%Y%m%dT%H%M%SZ)"
+  local backup
+  backup="/usr/local/lib/python3.12/winstdt-disabled-libvirt-$(date -u +%Y%m%dT%H%M%SZ)"
   run_root_shell "if compgen -G '${py_site}/libvirt*' >/dev/null || compgen -G '${py_site}/cygvirt*' >/dev/null; then
   install -d -m 0755 '${backup}'
   mv '${py_site}'/libvirt* '${backup}'/ 2>/dev/null || true
