@@ -72,6 +72,7 @@ test ! -e "$target" || { echo "effective runtime already exists: $target" >&2; e
 stage="$(sudo mktemp -d "$runtime_root/.${effective}.XXXXXX")"
 cleanup() { sudo test ! -d "$stage" || sudo mv "$stage" "$stage.failed"; }
 trap cleanup EXIT
+sudo chmod 0755 "$stage"
 sudo install -d -m 0755 "$stage/source"
 sudo cp -a "$source_root/." "$stage/source/"
 sudo install -d -m 0755 "$stage/source/.winstdt"
