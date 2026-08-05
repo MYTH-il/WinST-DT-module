@@ -1,0 +1,6 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://winst-dt.local/schemas/c2_attribution.schema.json",
+  "type":"object","required":["task_id","sample_id","pcap_sha256","findings"],"additionalProperties":false,
+  "properties":{"task_id":{"type":"integer","minimum":1},"sample_id":{"type":"string","pattern":"^[0-9a-f]{64}$"},"pcap_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"findings":{"type":"array","items":{"type":"object","required":["family","confidence","basis","evidence"],"additionalProperties":false,"properties":{"family":{"type":"string","minLength":1},"confidence":{"enum":["confirmed","likely","possible"]},"basis":{"enum":["static_prior","threat_intel","behavioural"]},"evidence":{"type":"array","minItems":1,"items":{"type":"object"}}}}}}
+}

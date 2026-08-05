@@ -1,7 +1,34 @@
-diff --git a/.winstdt/0004-provenance-and-fixture-safety b/.winstdt/0004-provenance-and-fixture-safety
-new file mode 100644
-index 0000000..20fc220
---- /dev/null
-+++ b/.winstdt/0004-provenance-and-fixture-safety
-@@ -0,0 +1 @@
-+WinST/DT compatibility patch: provenance and fixture-safety contract.
+diff --git a/pipeline/static_prior.py b/pipeline/static_prior.py
+index 55b33a5..1060a1b 100644
+--- a/pipeline/static_prior.py
++++ b/pipeline/static_prior.py
+@@ -41,7 +41,7 @@ import ipaddress
+ import json
+ import os
+ 
+-VALID_TYPES = frozenset({"ip", "domain", "url", "email"})
++VALID_TYPES = frozenset({"ip", "domain", "url", "email", "hash"})
+ 
+ 
+ @dataclass
+@@ -91,12 +91,17 @@ class PriorReport:
+ 
+ 
+ def ingest_prior(raw: dict, *, strict: bool = False) -> PriorReport:
++    family_attribution = raw.get("family_attribution")
++    explicit_family = (family_attribution.get("family")
++                       if isinstance(family_attribution, dict)
++                       and family_attribution.get("evidence") else None)
+     prior = StaticPrior(
+         sample_sha256=raw.get("sample_sha256"),
+-        family=raw.get("family"),
+-        capabilities=list(raw.get("capabilities") or []))
++        family=explicit_family if family_attribution is not None else raw.get("family"),
++        capabilities=list(raw.get("capa_capabilities") or raw.get("capabilities") or []))
+     report = PriorReport(prior=prior)
+-    for i, ind in enumerate(raw.get("c2_indicators") or []):
++    indicators = raw.get("iocs") if "iocs" in raw else raw.get("c2_indicators")
++    for i, ind in enumerate(indicators or []):
+         if not isinstance(ind, dict) or "type" not in ind or "value" not in ind:
+             msg = f"c2_indicators[{i}] must have 'type' and 'value'"
+             if strict:

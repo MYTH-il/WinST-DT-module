@@ -47,6 +47,14 @@ enum Command {
         #[arg(long)]
         skip_hashes: bool,
     },
+    /// Validate a completed derived C2 result bundle and its immutable handoff.
+    ValidateC2Result {
+        /// Path to /srv/winstdt/c2-results/{task_id}.
+        result_directory: PathBuf,
+        /// Immutable CAPE handoff used as analyzer input.
+        #[arg(long)]
+        handoff: PathBuf,
+    },
     /// Mock the C2/Exfiltration consumer by validating session directories.
     MockConsume {
         /// Path to /handoff.
@@ -470,6 +478,19 @@ fn main() -> ExitCode {
             }
             Err(error) => {
                 eprintln!("invalid bundle {}: {error}", bundle.display());
+                ExitCode::from(1)
+            }
+        },
+        Command::ValidateC2Result {
+            result_directory,
+            handoff,
+        } => match validate_c2_result(&result_directory, &handoff) {
+            Ok(()) => {
+                println!("accepted C2 result={}", result_directory.display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("invalid C2 result {}: {error}", result_directory.display());
                 ExitCode::from(1)
             }
         },
@@ -1990,6 +2011,253 @@ fn parse_hash_manifest(content: &str) -> Result<HashMap<String, String>> {
         hashes.insert(path.to_string(), hash.to_ascii_lowercase());
     }
     Ok(hashes)
+}
+
+fn collect_regular_files(root: &Path, current: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(current).map_err(|source| ValidationError::Read {
+        path: current.to_path_buf(),
+        source,
+    })? {
+        let entry = entry.map_err(|source| ValidationError::Read {
+            path: current.to_path_buf(),
+            source,
+        })?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|source| ValidationError::Read {
+            path: path.clone(),
+            source,
+        })?;
+        if metadata.file_type().is_symlink() {
+            return contract_error(format!(
+                "result bundle contains symlink: {}",
+                path.display()
+            ));
+        }
+        if metadata.is_dir() {
+            collect_regular_files(root, &path, files)?;
+        } else if metadata.is_file() {
+            files.push(path.strip_prefix(root).unwrap_or(&path).to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+fn required_identity(
+    value: &Value,
+    task_id: u64,
+    sample: &str,
+    pcap: &str,
+    label: &str,
+) -> Result<()> {
+    let actual_task = value.get("task_id").and_then(Value::as_u64);
+    let actual_sample = value
+        .get("sample_id")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("sample_sha256").and_then(Value::as_str));
+    let actual_pcap = value.get("pcap_sha256").and_then(Value::as_str);
+    if actual_task != Some(task_id) || actual_sample != Some(sample) || actual_pcap != Some(pcap) {
+        return contract_error(format!("identity mismatch in {label}"));
+    }
+    Ok(())
+}
+
+fn validate_status_map(value: &Value, name: &str, allowed: &[&str]) -> Result<()> {
+    let map = value
+        .as_object()
+        .ok_or_else(|| ValidationError::Contract(format!("provenance.{name} must be an object")))?;
+    if map.is_empty() {
+        return contract_error(format!(
+            "provenance.{name} must explicitly cover every stage/input"
+        ));
+    }
+    for (key, status) in map {
+        if !allowed.contains(&status.as_str().unwrap_or("")) {
+            return contract_error(format!("invalid status for {name}.{key}"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_c2_result(result: &Path, handoff: &Path) -> Result<()> {
+    for relative in ["inputs", "output", "output/iocs", "zeek"] {
+        if !result.join(relative).is_dir() {
+            return contract_error(format!("missing result directory {relative}"));
+        }
+    }
+    for relative in [
+        "output/events.json",
+        "output/attribution.json",
+        "output/timeline.json",
+        "analyzer.log",
+        "provenance.json",
+        HASH_MANIFEST_PATH,
+    ] {
+        ensure_non_empty(result.join(relative))?;
+    }
+    let provenance: Value = read_json(&result.join("provenance.json"))?;
+    let task_id = provenance
+        .get("task_id")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| ValidationError::Contract("provenance task_id missing".into()))?;
+    let sample = provenance
+        .get("sample_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ValidationError::Contract("provenance sample_sha256 missing".into()))?;
+    let pcap = provenance
+        .get("pcap_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ValidationError::Contract("provenance pcap_sha256 missing".into()))?;
+    if sample.len() != 64
+        || pcap.len() != 64
+        || result.file_name().and_then(|v| v.to_str()) != Some(&task_id.to_string())
+    {
+        return contract_error("invalid result identity");
+    }
+    if provenance.get("fixture_usage").and_then(Value::as_bool) != Some(false) {
+        return contract_error("production result declares fixture usage");
+    }
+    for key in [
+        "upstream_repository",
+        "upstream_commit",
+        "compatibility_patch_hashes",
+        "effective_runtime_tree_sha256",
+        "dependency_lock_sha256",
+        "input_hashes",
+        "handoff_hashes",
+        "correlation_mode",
+        "zeek",
+        "feed_revisions",
+        "database_schema_version",
+        "started_at_utc",
+        "ended_at_utc",
+        "warnings",
+        "degraded_features",
+    ] {
+        if provenance.get(key).is_none() {
+            return contract_error(format!("provenance missing {key}"));
+        }
+    }
+    validate_status_map(
+        &provenance["optional_inputs"],
+        "optional_inputs",
+        &["available", "disabled", "not_available", "invalid"],
+    )?;
+    validate_status_map(
+        &provenance["stages"],
+        "stages",
+        &["complete", "degraded", "not_available", "failed"],
+    )?;
+    for relative in [
+        "output/events.json",
+        "output/attribution.json",
+        "output/timeline.json",
+    ] {
+        required_identity(
+            &read_json(&result.join(relative))?,
+            task_id,
+            sample,
+            pcap,
+            relative,
+        )?;
+    }
+    required_identity(
+        &read_json(&result.join("output/iocs/identity.json"))?,
+        task_id,
+        sample,
+        pcap,
+        "IOC export",
+    )?;
+    if result.join("output/sql-verification.json").is_file() {
+        required_identity(
+            &read_json(&result.join("output/sql-verification.json"))?,
+            task_id,
+            sample,
+            pcap,
+            "SQL verification",
+        )?;
+    }
+    let event_doc: Value = read_json(&result.join("output/events.json"))?;
+    let tiers = ["confirmed", "strong", "weak", "unconfirmed", "allowlisted"];
+    for event in event_doc
+        .get("events")
+        .and_then(Value::as_array)
+        .ok_or_else(|| ValidationError::Contract("events.json events array missing".into()))?
+    {
+        required_identity(event, task_id, sample, pcap, "network event")?;
+        if !tiers.contains(
+            &event
+                .get("confidence_tier")
+                .and_then(Value::as_str)
+                .unwrap_or(""),
+        ) {
+            return contract_error("invalid event confidence tier");
+        }
+    }
+    let attribution: Value = read_json(&result.join("output/attribution.json"))?;
+    for finding in attribution
+        .get("findings")
+        .and_then(Value::as_array)
+        .ok_or_else(|| ValidationError::Contract("attribution findings array missing".into()))?
+    {
+        if !["confirmed", "likely", "possible"]
+            .contains(&finding["confidence"].as_str().unwrap_or(""))
+            || !["static_prior", "threat_intel", "behavioural"]
+                .contains(&finding["basis"].as_str().unwrap_or(""))
+            || finding["evidence"].as_array().map(Vec::is_empty) != Some(false)
+        {
+            return contract_error("invalid attribution finding");
+        }
+    }
+    let mut files = Vec::new();
+    collect_regular_files(result, result, &mut files)?;
+    let expected = parse_hash_manifest(&read_to_string(&result.join(HASH_MANIFEST_PATH))?)?;
+    let actual: HashSet<String> = files
+        .iter()
+        .filter(|p| p.as_path() != Path::new(HASH_MANIFEST_PATH))
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    if actual != expected.keys().cloned().collect() {
+        return contract_error(
+            "hashes.sha256 does not cover every regular result artifact exactly once",
+        );
+    }
+    for relative in &actual {
+        validate_hash_entry(result, &expected, relative)?;
+    }
+    let handoff_hashes = provenance["handoff_hashes"]
+        .as_object()
+        .ok_or_else(|| ValidationError::Contract("handoff_hashes must be an object".into()))?;
+    let mut handoff_files = Vec::new();
+    collect_regular_files(handoff, handoff, &mut handoff_files)?;
+    for relative in handoff_files {
+        let key = relative.to_string_lossy();
+        let expected_hash = handoff_hashes
+            .get(key.as_ref())
+            .and_then(Value::as_str)
+            .ok_or_else(|| ValidationError::Contract(format!("handoff hash missing {key}")))?;
+        if sha256_file(&handoff.join(&relative))? != expected_hash {
+            return contract_error(format!("immutable handoff changed: {key}"));
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for relative in files {
+            if fs::metadata(result.join(relative))
+                .map_err(|source| ValidationError::Read {
+                    path: result.to_path_buf(),
+                    source,
+                })?
+                .permissions()
+                .mode()
+                & 0o222
+                != 0
+            {
+                return contract_error("promoted result contains writable artifacts");
+            }
+        }
+    }
+    Ok(())
 }
 
 fn print_report(bundle: &Path, report: &ValidationReport) {

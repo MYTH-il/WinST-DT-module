@@ -16,7 +16,7 @@
       "0003-confidence-and-attribution-schema.patch",
       "0004-provenance-and-fixture-safety.patch"
     ],
-    "series_sha256": "b25bbe466c931f50087371e9bfc4e6882600f45e082c3d49cf250486f1323c07"
+    "series_sha256": "89a112b5794788fa75acc647b79faf48695f95d150b0721a1fe80601059692b7"
   },
   "correlation_window_seconds": 15,
   "results_root": "/srv/winstdt/c2-results"

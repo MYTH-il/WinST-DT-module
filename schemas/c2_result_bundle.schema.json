@@ -1,0 +1,6 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://winst-dt.local/schemas/c2_result_bundle.schema.json",
+  "type":"object","required":["schema_version","task_id","sample_id","pcap_sha256","events","attribution","timeline","iocs"],"additionalProperties":false,
+  "properties":{"schema_version":{"const":"1.0"},"task_id":{"type":"integer","minimum":1},"sample_id":{"type":"string","pattern":"^[0-9a-f]{64}$"},"pcap_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"events":{"type":"array","items":{"$ref":"c2_network_event.schema.json"}},"attribution":{"$ref":"c2_attribution.schema.json"},"timeline":{"type":"array"},"iocs":{"type":"array"}}
+}
