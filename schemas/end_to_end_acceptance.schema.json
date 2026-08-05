@@ -1,0 +1,5 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,
+  "required":["schema_version","run_id","task_id","fixture_sha256","sample_identity_consistent","real_correlation","receipt_count","pcap_preserved","etl_preserved","suricata_marker_observed","postgresql_round_trip","snapshot_reverted","gateway_revoked","public_route_absent","status"],
+  "properties":{"schema_version":{"const":"1.0"},"run_id":{"type":"string"},"task_id":{"type":"integer","minimum":1},"fixture_sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"sample_identity_consistent":{"type":"boolean"},"real_correlation":{"type":"boolean"},"receipt_count":{"type":"integer","minimum":3},"pcap_preserved":{"type":"boolean"},"etl_preserved":{"type":"boolean"},"suricata_marker_observed":{"type":"boolean"},"postgresql_round_trip":{"type":"boolean"},"snapshot_reverted":{"type":"boolean"},"gateway_revoked":{"type":"boolean"},"public_route_absent":{"type":"boolean"},"status":{"enum":["passed","failed"]}}
+}
