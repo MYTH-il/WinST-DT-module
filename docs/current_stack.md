@@ -4,23 +4,23 @@ Status date: 2026-08-05. `Working` means a current acceptance record exists; sof
 
 | Capability | Status | Evidence or remaining gate |
 |---|---|---|
-| Ubuntu 24.04 monolithic libvirt runtime | Working on demand | Packaged `libvirtd`, socket, networks, and both original domains validated after stale modular units were quarantined |
-| Two-reboot libvirt persistence | Degraded | Run `validate-libvirt-reboots.sh` after two distinct operator-initiated boots |
-| CAPE service stability | Working on demand | Services are active after live repair; reboot persistence remains coupled to the two-reboot gate |
-| Windows guest and snapshot | Working on demand | The reviewed `hardened-baseline-antievasion-v1` parent and gateway-DNS derivative `hardened-baseline-controlled-egress-v2` are queryable |
-| CAPE/capemon and PCAP/ETL handoff | Working on demand | Existing completed controlled validation evidence; every new task remains independently validated |
+| Ubuntu 24.04 monolithic libvirt runtime | Working | [acceptance:libvirt_live_recovery] Packaged `libvirtd`, socket, networks, and both original domains passed live validation |
+| Two-reboot libvirt persistence | Working | [acceptance:libvirt_two_reboots] Prepare and two consecutive post-reboot validations passed with three distinct boot IDs |
+| CAPE service stability | Working | [acceptance:libvirt_two_reboots] CAPE remained healthy through both reboot validation cycles |
+| Windows guest and snapshot | Working | [acceptance:full_end_to_end] The reviewed parent and gateway-DNS derivative `hardened-baseline-controlled-egress-v2` passed detonation and rollback |
+| CAPE/capemon and PCAP/ETL handoff | Working | [acceptance:full_end_to_end] Task 16 preserved and validated immutable PCAP, ETL, clock, access-event, and reporting evidence |
 | Detect It Easy 3.10 | Working | [acceptance:die_3_10] Official package hash, exact version, database access, PE positive, and text negative validated live |
 | CAPA/FLOSS/TRiD/Volatility | Degraded | Installed or profile-gated; completed-task positives remain required where indicated in `analysis_capabilities.md` |
-| Suricata | Degraded | Pinned passive processing is configured; the controlled canary rule exists, but the full CAPE run gate is pending |
-| C2 upstream subtree | Working on demand | Pristine `c417276196586c676d3f0b63d23100d2cd20fce9`; 233 collected, 222 passed, 11 upstream-declared corpus skips |
-| C2 compatibility runtime | Degraded | Patch, feed, schema, identity, migration, Zeek, and bundle tests pass; live versioned promotion/full task acceptance is pending |
-| PostgreSQL contract | Working on demand | Clean schema and repeated migration passed locally; full CAPE JSON/SQL round trip is pending |
-| Access-event adapter | Working on demand | Interpolation, bounds, uncertainty, ETW conflict, malformed input, and fixture prevention are tested |
-| Controlled-services network | Working on demand | Isolated `192.168.125.0/24`, no libvirt forward element, old NAT network removed |
-| Controlled responder | Working on demand | Private DNS, HTTP, HTTPS, signed receipt, strict payload fields, and no public route validated live |
-| Gateway negative-policy matrix | Degraded | Default-drop is live; wrong destination/port, expiry, quota, ceiling, pin mismatch, and outage evidence must all pass in one acceptance set |
-| Harmless Windows fixture | Working on demand | Separate pinned Rust crate cross-compiles to PE and DIE detects it |
-| Full harmless CAPE detonation | Degraded | Operator-approved signed policy, real correlation, Suricata, SQL round trip, snapshot revert, and final route proof remain required |
+| Suricata | Working | [acceptance:full_end_to_end] Pinned passive processing emitted three controlled-canary alerts from the CAPE capture |
+| C2 upstream subtree | Working | [acceptance:c2_compatibility] Pristine `c417276196586c676d3f0b63d23100d2cd20fce9`; 233 collected, 222 passed, 11 upstream-declared corpus skips |
+| C2 compatibility runtime | Working | [acceptance:full_end_to_end] Versioned runtime completed real correlation, attribution, IOC, provenance, and immutable result validation |
+| PostgreSQL contract | Working | [acceptance:full_end_to_end] Schema v2 migration and JSON/SQL sample, PCAP, task, and row-count round trip passed |
+| Access-event adapter | Working | [acceptance:full_end_to_end] Real CAPE/capemon events passed clock interpolation and correlation eligibility checks |
+| Controlled-services network | Working | [acceptance:controlled_services_network] Isolated `192.168.125.0/24` has no libvirt forwarding element |
+| Controlled responder | Working | [acceptance:full_end_to_end] Private DNS and three deterministic signed receipts passed with no public route |
+| Gateway negative-policy matrix | Working | [acceptance:gateway_negative_matrix] Destination, port, expiry, byte, connection, DNS, outage, and emergency-stop cases passed together |
+| Harmless Windows fixture | Working | [acceptance:full_end_to_end] The Rust/Win32 PE completed its controlled activity and transmitted only generated canary data |
+| Full harmless CAPE detonation | Working | [acceptance:full_end_to_end] Task 16 passed correlation, Suricata, PostgreSQL, snapshot reversion, and final no-route proof |
 | Public egress | Unavailable | Arbitrary public egress is unsupported |
 
 ## Deployed boundaries

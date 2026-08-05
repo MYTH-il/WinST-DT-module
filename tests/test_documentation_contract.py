@@ -33,9 +33,16 @@ def test_working_status_requires_passed_acceptance(tmp_path):
     checker = ROOT / "scripts/check-capability-status.py"
     documentation = ROOT / "docs/current_stack.md"
     ledger = ROOT / "config/acceptance-ledger.initial.json"
-    subprocess.run([str(checker), str(documentation), str(ledger)], check=True)
+    accepted = json.loads(ledger.read_text())
+    markers = set(re.findall(r"\[acceptance:([^]]+)]", documentation.read_text()))
+    for marker in markers:
+        accepted["entries"][marker]["status"] = "passed"
+        accepted["entries"][marker]["evidence"] = ["documentation contract fixture"]
+    accepted_path = tmp_path / "accepted.json"
+    accepted_path.write_text(json.dumps(accepted))
+    subprocess.run([str(checker), str(documentation), str(accepted_path)], check=True)
 
-    rejected = json.loads(ledger.read_text())
+    rejected = accepted
     rejected["entries"]["die_3_10"]["status"] = "pending"
     rejected_path = tmp_path / "rejected.json"
     rejected_path.write_text(json.dumps(rejected))

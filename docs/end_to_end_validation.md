@@ -31,9 +31,9 @@ Negative acceptance additionally covers wrong destination and port, expiry durin
 
 Failed analyzer stages remain under a marked `.failed` staging directory. Handoffs and successful prior results are never rewritten. Revoke the gateway, collect both captures and responder receipts, confirm the forwarding chain is default-drop, revert `hardened-baseline-controlled-egress-v2`, and diagnose from preserved evidence. Derive that snapshot once with `scripts/derive-controlled-egress-snapshot.sh --execute`; its reviewed parent remains available for rollback.
 
-## Deferred reboot acceptance
+## Reboot acceptance
 
-The host is not rebooted automatically. Complete the resumable workflow on separate boots:
+The workflow never reboots the host automatically. To repeat the acceptance test, run each phase on separate boots:
 
 ```bash
 scripts/validation/validate-libvirt-reboots.sh prepare
@@ -43,4 +43,4 @@ scripts/validation/validate-libvirt-reboots.sh after-reboot-1
 scripts/validation/validate-libvirt-reboots.sh after-reboot-2
 ```
 
-Until both distinct boot IDs pass, reboot persistence and all dependent capabilities remain `Degraded`.
+The current host completed all three phases with distinct boot IDs on 2026-08-05. Evidence is stored in `/srv/winstdt/validation/libvirt-reboots/state.json`; a future incomplete or failed cycle must return reboot-dependent capabilities to `Degraded`.

@@ -67,6 +67,21 @@ if reboot_state.exists():
     ledger["entries"]["libvirt_two_reboots"] = {
         "status": "passed" if passed else "pending", "evidence": [str(reboot_state)] if passed else [],
         "limitations": [] if passed else ["requires two operator-initiated reboots"]}
+gateway_acceptance = sorted(args.root.glob("gateway-negative/*/acceptance.json"))
+if gateway_acceptance:
+    value = json.loads(gateway_acceptance[-1].read_text())
+    required = {"wrong_destination", "wrong_port", "policy_expiry_open_connection", "byte_quota",
+                "connection_ceiling", "dns_pin", "dns_bypass", "responder_unavailable",
+                "emergency_stop", "approved_destination"}
+    passed = value.get("status") == "passed" and value.get("public_route_absent") is True \
+        and value.get("captures_preserved") is True and value.get("gateway_revoked") is True \
+        and required.issubset(value.get("tests", {})) \
+        and all(value["tests"].get(name) == "passed" for name in required)
+    ledger["entries"]["gateway_negative_matrix"] = {
+        "status": "passed" if passed else "failed",
+        "evidence": [str(gateway_acceptance[-1])] if passed else [],
+        "limitations": [] if passed else ["latest gateway negative matrix is incomplete or failed"],
+    }
 accepted = sorted(args.root.glob("end-to-end/*/acceptance.json"))
 if accepted:
     value = json.loads(accepted[-1].read_text())
@@ -79,5 +94,5 @@ if not args.execute:
 args.root.mkdir(parents=True, exist_ok=True)
 with tempfile.NamedTemporaryFile("w", dir=args.root, delete=False) as handle:
     json.dump(ledger, handle, indent=2); handle.write("\n"); temporary = Path(handle.name)
-temporary.chmod(0o640); temporary.replace(ledger_path)
+temporary.chmod(0o644); temporary.replace(ledger_path)
 print(ledger_path)
