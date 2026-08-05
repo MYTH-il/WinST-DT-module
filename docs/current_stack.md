@@ -9,7 +9,7 @@ Status date: 2026-08-05. `Working` means a current acceptance record exists; sof
 | CAPE service stability | Working on demand | Services are active after live repair; reboot persistence remains coupled to the two-reboot gate |
 | Windows guest and snapshot | Working on demand | `winstdt-win10-22h2` and `hardened-baseline-antievasion-v1` are queryable |
 | CAPE/capemon and PCAP/ETL handoff | Working on demand | Existing completed controlled validation evidence; every new task remains independently validated |
-| Detect It Easy 3.10 | Working | Official package hash, exact version, database access, PE positive, and text negative validated live |
+| Detect It Easy 3.10 | Working | [acceptance:die_3_10] Official package hash, exact version, database access, PE positive, and text negative validated live |
 | CAPA/FLOSS/TRiD/Volatility | Degraded | Installed or profile-gated; completed-task positives remain required where indicated in `analysis_capabilities.md` |
 | Suricata | Degraded | Pinned passive processing is configured; the controlled canary rule exists, but the full CAPE run gate is pending |
 | C2 upstream subtree | Working on demand | Pristine `c417276196586c676d3f0b63d23100d2cd20fce9`; 233 collected, 222 passed, 11 upstream-declared corpus skips |

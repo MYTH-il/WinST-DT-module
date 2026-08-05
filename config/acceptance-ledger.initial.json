@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "updated_at_utc": "1970-01-01T00:00:00Z",
+  "host_boot_id": "not-recorded",
+  "entries": {
+    "libvirt_live_recovery": {"status":"passed","evidence":["Live repair and validation completed 2026-08-05 without reboot"],"limitations":["Reboot persistence is a separate gate"]},
+    "libvirt_two_reboots": {"status":"pending","evidence":[],"limitations":["requires two operator-initiated reboots"]},
+    "die_3_10": {"status":"passed","evidence":["Pinned package hash, exact version, signature database access, PE positive, and text negative validated live 2026-08-05"],"limitations":[]},
+    "c2_compatibility": {"status":"passed","evidence":["Pristine upstream and compatibility suites passed 2026-08-05; upstream corpus skips remain explicitly reported"],"limitations":[]},
+    "postgresql_schema_v2": {"status":"passed","evidence":["Clean schema and idempotent v2 migration passed against a temporary local PostgreSQL database 2026-08-05"],"limitations":["Full CAPE JSON/SQL round trip is a separate gate"]},
+    "controlled_services_network": {"status":"passed","evidence":["Live libvirt XML has no forward element and the former NAT-backed network was removed 2026-08-05"],"limitations":["Single-host virtualization is not an independent security boundary"]},
+    "controlled_responder_positive": {"status":"passed","evidence":["Private DNS, HTTP, HTTPS, and Ed25519 receipt verification passed live 2026-08-05"],"limitations":["Full CAPE detonation is a separate gate"]},
+    "gateway_negative_matrix": {"status":"pending","evidence":[],"limitations":["all negative scenarios required in one evidence set"]},
+    "full_end_to_end": {"status":"pending","evidence":[],"limitations":["requires harmless CAPE detonation and PostgreSQL round trip"]}
+  }
+}

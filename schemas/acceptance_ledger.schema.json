@@ -1,0 +1,5 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,
+  "required":["schema_version","updated_at_utc","host_boot_id","entries"],
+  "properties":{"schema_version":{"const":"1.0"},"updated_at_utc":{"type":"string","format":"date-time"},"host_boot_id":{"type":"string","minLength":1},"entries":{"type":"object","additionalProperties":{"type":"object","additionalProperties":false,"required":["status","evidence","limitations"],"properties":{"status":{"enum":["passed","pending","failed"]},"evidence":{"type":"array","items":{"type":"string"}},"limitations":{"type":"array","items":{"type":"string"}}}}}}
+}

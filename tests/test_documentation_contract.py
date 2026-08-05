@@ -1,4 +1,6 @@
 import re
+import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,3 +27,16 @@ def test_upstream_acknowledgment_and_boundary_remain_clear():
     integration = (ROOT / "docs/c2_exfil_integration.md").read_text()
     assert "byte-for-byte subtree" in integration
     assert "never edits it" in integration
+
+
+def test_working_status_requires_passed_acceptance(tmp_path):
+    checker = ROOT / "scripts/check-capability-status.py"
+    documentation = ROOT / "docs/current_stack.md"
+    ledger = ROOT / "config/acceptance-ledger.initial.json"
+    subprocess.run([str(checker), str(documentation), str(ledger)], check=True)
+
+    rejected = json.loads(ledger.read_text())
+    rejected["entries"]["die_3_10"]["status"] = "pending"
+    rejected_path = tmp_path / "rejected.json"
+    rejected_path.write_text(json.dumps(rejected))
+    assert subprocess.run([str(checker), str(documentation), str(rejected_path)]).returncode != 0
