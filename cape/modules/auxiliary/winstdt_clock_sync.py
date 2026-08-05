@@ -47,13 +47,15 @@ class WinstdtClockSync(Auxiliary):
         }
 
     def _start_sampler(self):
-        deadline = time.monotonic() + 60
+        # Snapshot resume can expose the old saved clock briefly. Retain the
+        # latest sample while CAPE finishes guest initialization and correction.
+        deadline = time.monotonic() + 30
         while not self._stop.is_set() and time.monotonic() < deadline:
             try:
                 self._start = self._sample()
-                return
             except (OSError, ValueError, TypeError):
-                self._stop.wait(1)
+                pass
+            self._stop.wait(1)
 
     def start(self):
         self._thread = threading.Thread(target=self._start_sampler, daemon=True)
@@ -97,4 +99,3 @@ class WinstdtClockSync(Auxiliary):
         temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
         temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
         os.replace(temporary, destination)
-

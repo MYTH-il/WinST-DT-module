@@ -10,7 +10,7 @@ use windows_sys::Win32::{
             WINHTTP_ACCESS_TYPE_NO_PROXY, WinHttpCloseHandle, WinHttpConnect, WinHttpOpen,
             WinHttpOpenRequest, WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest,
         },
-        WinSock::{ADDRINFOW, FreeAddrInfoW, GetAddrInfoW},
+        WinSock::{ADDRINFOW, FreeAddrInfoW, GetAddrInfoW, WSACleanup, WSADATA, WSAStartup},
     },
     Storage::FileSystem::{
         CREATE_ALWAYS, CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
@@ -160,15 +160,23 @@ fn system_info() -> Result<String, String> {
 }
 
 fn resolve_private_host() -> Result<(), String> {
+    let mut winsock: WSADATA = unsafe { mem::zeroed() };
+    if unsafe { WSAStartup(0x0202, &mut winsock) } != 0 {
+        return Err("Winsock initialization failed".into());
+    }
     let host = wide(HOST);
     let service = wide("8080");
     let mut result = ptr::null_mut();
     let hints: ADDRINFOW = unsafe { mem::zeroed() };
     let status = unsafe { GetAddrInfoW(host.as_ptr(), service.as_ptr(), &hints, &mut result) };
     if status != 0 || result.is_null() {
+        unsafe { WSACleanup() };
         return Err("private DNS resolution failed".into());
     }
-    unsafe { FreeAddrInfoW(result) };
+    unsafe {
+        FreeAddrInfoW(result);
+        WSACleanup();
+    }
     Ok(())
 }
 
