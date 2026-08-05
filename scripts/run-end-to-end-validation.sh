@@ -70,7 +70,7 @@ python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); assert s["correlati
 WINSTDT_POSTGRES_ENABLED=1 "$PROJECT_ROOT/scripts/run-c2-analyzer.sh" "$bundle"
 result="$WINSTDT_ROOT/c2-results/$task_id"
 "$WINSTDT_ROOT/bin/winstdt" validate-c2-result "$result" --handoff "$bundle"
-grep -Rqs 'WINSTDT controlled validation canary' "$bundle/network/suricata"
+grep -qs 'WINSTDT controlled validation canary' "$bundle/analysis/suricata.json"
 revert_and_stop; reverted=1
 status_output="$("$PROJECT_ROOT/scripts/manage-egress-run.sh" status)"
 printf '%s' "$status_output" | grep -q '"active_run":null'
