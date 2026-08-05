@@ -139,7 +139,6 @@ def render(config: dict) -> str:
     lines.extend([
         " }",
         " chain forward { type filter hook forward priority 0; policy drop;",
-        f'  iifname "{internal}" oifname "{external}" ip saddr {guest} ct state established,related counter accept',
         f'  iifname "{external}" oifname "{internal}" ip daddr {guest} ct state established,related counter accept',
     ])
     for index, destination in enumerate(config["destinations"], start=1):
@@ -149,8 +148,9 @@ def render(config: dict) -> str:
             f'ip daddr {destination["ip"]} {proto} dport {destination["port"]}'
         )
         lines.extend([
-            f"  {match} quota name run_quota_{index} over counter drop",
+            f"  {match} quota name run_quota_{index} counter drop",
             f"  {match} ct state new limit rate {config['max_connections']}/minute counter accept",
+            f"  {match} ct state established counter accept",
         ])
     lines.extend([
         " }",
