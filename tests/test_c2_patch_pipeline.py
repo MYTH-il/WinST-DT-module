@@ -22,6 +22,7 @@ def test_each_patch_applies_to_a_fresh_copy(tmp_path):
     source = tmp_path / "source"
     shutil.copytree(ROOT / "integrations/c2-exfil", source)
     (source / ".winstdt").mkdir()
+    (source / "sql/migrations").mkdir()
     patch_root = ROOT / "integrations/c2-exfil-patches"
     for name in (patch_root / "series").read_text().splitlines():
         if not name or name.startswith("#"):
@@ -32,7 +33,9 @@ def test_each_patch_applies_to_a_fresh_copy(tmp_path):
             capture_output=True,
             text=True,
         )
-    assert len(list((source / ".winstdt").iterdir())) == 4
+    assert (source / "pipeline/orchestrator.py").is_file()
+    assert (source / "pipeline/winstdt_feed_import.py").is_file()
+    assert (source / "sql/migrations/002_winstdt_compat.sql").is_file()
 
 
 def test_installer_is_versioned_and_never_deletes_active_runtime():

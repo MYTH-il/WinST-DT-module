@@ -1,0 +1,2 @@
+# first_seen_utc,dst_ip,dst_port,c2_status,last_online,malware
+2026-08-01T12:00:00Z,192.0.2.8,443,online,2026-08-02,ControlledFixture

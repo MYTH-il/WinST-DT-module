@@ -1,7 +1,116 @@
-diff --git a/.winstdt/0001-explicit-input-and-identity b/.winstdt/0001-explicit-input-and-identity
-new file mode 100644
-index 0000000..f3fb21a
---- /dev/null
-+++ b/.winstdt/0001-explicit-input-and-identity
-@@ -0,0 +1 @@
-+WinST/DT compatibility patch: explicit input and identity contract.
+diff --git a/pipeline/orchestrator.py b/pipeline/orchestrator.py
+index 3945c22..15a6a56 100644
+--- a/pipeline/orchestrator.py
++++ b/pipeline/orchestrator.py
+@@ -18,6 +18,7 @@ on the REAL pcap.
+ """
+ 
+ from __future__ import annotations
++import argparse
+ import sys
+ import os
+ import json
+@@ -444,26 +445,73 @@ def emit_schema_rows(network_events, correlated, sample_id):
+     return rows
+ 
+ 
+-def main():
+-    pcap = sys.argv[1] if len(sys.argv) > 1 else "data/sample_infostealer.pcap"
+-    acc_path = sys.argv[2] if len(sys.argv) > 2 else "data/access_events_fixture.json"
++def parse_cli(argv=None):
++    parser = argparse.ArgumentParser(description="Run the C2/exfiltration analyzer")
++    parser.add_argument("pcap", nargs="?", default="data/sample_infostealer.pcap")
++    parser.add_argument("legacy_access_events", nargs="?")
++    parser.add_argument("--analysis-id")
++    parser.add_argument("--sample-sha256")
++    parser.add_argument("--pcap-sha256")
++    parser.add_argument("--access-events")
++    parser.add_argument("--access-events-source",
++                        choices=("real", "synthetic-test", "disabled"))
++    parser.add_argument("--static-prior")
++    parser.add_argument("--zeek-dir")
++    parser.add_argument("--validation-mode", action="store_true")
++    args = parser.parse_args(argv)
++    if args.access_events and args.legacy_access_events:
++        parser.error("use either positional access events or --access-events, not both")
++    args.access_events = args.access_events or args.legacy_access_events
++    if args.access_events_source is None:
++        args.access_events_source = "real" if args.access_events else "disabled"
++    if args.access_events_source == "disabled" and args.access_events:
++        parser.error("disabled access-event source cannot have a path")
++    if args.access_events_source != "disabled" and not args.access_events:
++        parser.error("the selected access-event source requires --access-events")
++    if args.access_events_source == "synthetic-test" and not args.validation_mode:
++        parser.error("synthetic-test access events require --validation-mode")
++    if args.analysis_id is not None and not str(args.analysis_id).isdigit():
++        parser.error("--analysis-id must be numeric")
++    for name in ("sample_sha256", "pcap_sha256"):
++        value = getattr(args, name)
++        if value and (len(value) != 64 or any(c not in "0123456789abcdefABCDEF" for c in value)):
++            parser.error(f"--{name.replace('_', '-')} must be a SHA-256")
++        if value:
++            setattr(args, name, value.lower())
++    actual_pcap = hashlib.sha256(open(args.pcap, "rb").read()).hexdigest()
++    if args.pcap_sha256 and args.pcap_sha256 != actual_pcap:
++        parser.error("--pcap-sha256 does not match the capture")
++    args.pcap_sha256 = args.pcap_sha256 or actual_pcap
++    args.sample_sha256 = args.sample_sha256 or actual_pcap
++    if args.access_events:
++        fixture = os.path.join(os.path.dirname(__file__), "..", "data",
++                               "access_events_fixture.json")
++        if os.path.exists(fixture):
++            known = hashlib.sha256(open(fixture, "rb").read()).hexdigest()
++            supplied = hashlib.sha256(open(args.access_events, "rb").read()).hexdigest()
++            if supplied == known and not (
++                    args.access_events_source == "synthetic-test" and args.validation_mode):
++                parser.error("the bundled access-event fixture requires synthetic-test validation mode")
++    return args
+ 
+-    # Parse --zeek-dir / --static-prior flags if present
+-    zeek_dir = None
+-    static_prior_path = None
+-    for i, arg in enumerate(sys.argv):
+-        if arg == "--zeek-dir" and i + 1 < len(sys.argv):
+-            zeek_dir = sys.argv[i + 1]
+-        if arg == "--static-prior" and i + 1 < len(sys.argv):
+-            static_prior_path = sys.argv[i + 1]
+ 
+-    sample_id = hashlib.sha256(open(pcap, "rb").read()).hexdigest()
++def main():
++    args = parse_cli()
++    pcap = args.pcap
++    acc_path = args.access_events
++    zeek_dir = args.zeek_dir
++    static_prior_path = args.static_prior
++    sample_id = args.sample_sha256
+ 
+     # Chain-of-custody: hash all inputs into a reproducible case manifest.
+     from evidence import build_case_manifest
+     manifest = build_case_manifest(
+         pcap=pcap, zeek_dir=zeek_dir,
+-        parameters={"acc_events": os.path.basename(acc_path)})
++        parameters={"analysis_id": args.analysis_id,
++                    "sample_sha256": sample_id,
++                    "pcap_sha256": args.pcap_sha256,
++                    "access_events": os.path.basename(acc_path) if acc_path else None,
++                    "access_events_source": args.access_events_source})
+     os.makedirs("output", exist_ok=True)
+     manifest.write("output/case_manifest.json")
+ 
+@@ -486,11 +534,13 @@ def main():
+         print(f"    [{e['kind']:6}] {e['dst_ip']}:{e['dst_port']} "
+               f"conf={e['confidence']}{geo}{ja3}{flag}")
+ 
+-    fixture = os.path.exists(acc_path)
+     print(f"\n[*] Stage 3: correlation "
+-          f"({'FIXTURE access events - sandbox interface' if fixture else 'no access events'})")
++          f"(access-event source: {args.access_events_source})")
+     # Ingest + validate ETW access events through the cross-module front door.
+-    report = load_etw_events(acc_path) if fixture else IngestReport()
++    report = (load_etw_events(acc_path)
++              if args.access_events_source != "disabled" else IngestReport())
++    if args.access_events_source == "synthetic-test":
++        report.warnings.append("SYNTHETIC TEST INPUT - VALIDATION ONLY")
+     if report.errors:
+         print(f"    [etw] {report.summary()}")
+         for err in report.errors:

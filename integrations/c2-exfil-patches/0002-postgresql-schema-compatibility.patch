@@ -1,7 +1,196 @@
-diff --git a/.winstdt/0002-postgresql-schema-compatibility b/.winstdt/0002-postgresql-schema-compatibility
+diff --git a/pipeline/db_loader.py b/pipeline/db_loader.py
+index 570c7c7..37d16e8 100644
+--- a/pipeline/db_loader.py
++++ b/pipeline/db_loader.py
+@@ -25,15 +25,29 @@ def get_conn():
+ 
+ 
+ def load(events_path="output/exfil_events.json"):
+-    rows = json.load(open(events_path))
++    if events_path == "output/exfil_events.json" and not os.path.exists(events_path) \
++            and os.path.exists("output/events.json"):
++        events_path = "output/events.json"
++    rows = json.load(open(events_path, encoding="utf-8"))
+     if not rows:
+         print("[!] No rows to load."); return
+     sample_id = rows[0]["sample_id"]
+     # Overall sample tier = highest tier present.
+-    order = {"confirmed": 3, "strong": 2, "weak": 1, "unconfirmed": 0}
++    order = {"confirmed": 4, "strong": 3, "weak": 2,
++             "unconfirmed": 1, "allowlisted": 0}
+     tier = max((r["confidence_tier"] for r in rows), key=lambda t: order.get(t, 0))
+ 
+     with get_conn() as conn, conn.cursor() as cur:
++        cur.execute("SELECT version FROM schema_versions WHERE component='c2-exfil'")
++        version = cur.fetchone()
++        if not version or version[0] != 2:
++            raise RuntimeError("installed C2 database schema is not version 2")
++        cur.execute("SELECT column_name FROM information_schema.columns "
++                    "WHERE table_name='exfil_events'")
++        columns = {row[0] for row in cur.fetchall()}
++        required = {"destination_domain", "confidence_score", "confidence_tier"}
++        if not required <= columns:
++            raise RuntimeError("installed exfil_events columns do not match the loader")
+         cur.execute(
+             "INSERT INTO samples (sample_id, platform, confidence_tier) "
+             "VALUES (%s,%s,%s) ON CONFLICT (sample_id) DO UPDATE "
+@@ -56,7 +70,24 @@ def load(events_path="output/exfil_events.json"):
+                     %(reputation_score)s, %(ja3_hash)s, %(plaintext_available)s,
+                     %(confidence_score)s, %(confidence_tier)s,
+                     %(mitre_technique_id)s, %(evidence_hash)s)
+-                   ON CONFLICT (event_id) DO NOTHING""",
++                   ON CONFLICT (event_id) DO UPDATE SET
++                    sample_id=EXCLUDED.sample_id,
++                    platform=EXCLUDED.platform,
++                    timestamp=EXCLUDED.timestamp,
++                    data_type_accessed=EXCLUDED.data_type_accessed,
++                    access_api_call=EXCLUDED.access_api_call,
++                    destination_ip=EXCLUDED.destination_ip,
++                    destination_port=EXCLUDED.destination_port,
++                    destination_domain=EXCLUDED.destination_domain,
++                    asn=EXCLUDED.asn,
++                    geo_country=EXCLUDED.geo_country,
++                    reputation_score=EXCLUDED.reputation_score,
++                    ja3_hash=EXCLUDED.ja3_hash,
++                    plaintext_available=EXCLUDED.plaintext_available,
++                    confidence_score=EXCLUDED.confidence_score,
++                    confidence_tier=EXCLUDED.confidence_tier,
++                    mitre_technique_id=EXCLUDED.mitre_technique_id,
++                    evidence_hash=EXCLUDED.evidence_hash""",
+                 {k: r.get(k) for k in (
+                     "event_id", "sample_id", "platform", "timestamp",
+                     "data_type_accessed", "access_api_call",
+@@ -65,6 +96,16 @@ def load(events_path="output/exfil_events.json"):
+                     "reputation_score", "ja3_hash", "plaintext_available",
+                     "confidence_score", "confidence_tier",
+                     "mitre_technique_id", "evidence_hash")})
++        attribution_path = os.path.join(os.path.dirname(events_path), "attribution.json")
++        if os.path.exists(attribution_path):
++            for verdict in json.load(open(attribution_path, encoding="utf-8")):
++                cur.execute("""INSERT INTO attributions
++                    (sample_id,family,confidence,basis,evidence) VALUES (%s,%s,%s,%s,%s)
++                    ON CONFLICT (sample_id,family) DO UPDATE SET
++                    confidence=EXCLUDED.confidence,basis=EXCLUDED.basis,
++                    evidence=EXCLUDED.evidence""",
++                    (sample_id, verdict["family"], verdict["confidence"],
++                     verdict["basis"], json.dumps(verdict["evidence"])))
+         conn.commit()
+     print(f"[*] Loaded sample {sample_id[:16]}... ({tier}) with {len(rows)} events")
+ 
+diff --git a/sql/migrations/001_baseline.sql b/sql/migrations/001_baseline.sql
 new file mode 100644
-index 0000000..e256453
+index 0000000..b046605
 --- /dev/null
-+++ b/.winstdt/0002-postgresql-schema-compatibility
-@@ -0,0 +1 @@
-+WinST/DT compatibility patch: PostgreSQL schema version 2 contract.
++++ b/sql/migrations/001_baseline.sql
+@@ -0,0 +1,12 @@
++BEGIN;
++CREATE TABLE IF NOT EXISTS schema_versions (
++  component  TEXT PRIMARY KEY,
++  version    INTEGER NOT NULL CHECK (version > 0),
++  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++INSERT INTO schema_versions(component, version)
++SELECT 'c2-exfil', 1
++WHERE NOT EXISTS (
++  SELECT 1 FROM schema_versions WHERE component = 'c2-exfil'
++);
++COMMIT;
+diff --git a/sql/migrations/002_winstdt_compat.sql b/sql/migrations/002_winstdt_compat.sql
+new file mode 100644
+index 0000000..2e1f58c
+--- /dev/null
++++ b/sql/migrations/002_winstdt_compat.sql
+@@ -0,0 +1,39 @@
++BEGIN;
++SELECT pg_advisory_xact_lock(hashtext('winstdt-c2-schema'));
++ALTER TABLE exfil_events ADD COLUMN IF NOT EXISTS destination_domain TEXT;
++UPDATE samples SET confidence_tier = 'unconfirmed'
++ WHERE confidence_tier NOT IN ('confirmed','strong','weak','unconfirmed','allowlisted');
++UPDATE exfil_events SET confidence_tier = 'unconfirmed'
++ WHERE confidence_tier IS NOT NULL
++   AND confidence_tier NOT IN ('confirmed','strong','weak','unconfirmed','allowlisted');
++ALTER TABLE samples DROP CONSTRAINT IF EXISTS samples_confidence_tier_check;
++ALTER TABLE samples ADD CONSTRAINT samples_confidence_tier_check
++ CHECK (confidence_tier IN ('confirmed','strong','weak','unconfirmed','allowlisted'));
++ALTER TABLE exfil_events DROP CONSTRAINT IF EXISTS exfil_events_confidence_tier_check;
++ALTER TABLE exfil_events ADD CONSTRAINT exfil_events_confidence_tier_check
++ CHECK (confidence_tier IS NULL OR confidence_tier IN
++   ('confirmed','strong','weak','unconfirmed','allowlisted'));
++ALTER TABLE exfil_events DROP CONSTRAINT IF EXISTS exfil_events_confidence_score_check;
++ALTER TABLE exfil_events ADD CONSTRAINT exfil_events_confidence_score_check
++ CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1));
++CREATE TABLE IF NOT EXISTS attributions (
++  sample_id TEXT NOT NULL REFERENCES samples(sample_id),
++  family TEXT NOT NULL,
++  confidence TEXT NOT NULL CHECK (confidence IN ('confirmed','likely','possible')),
++  basis TEXT NOT NULL CHECK (basis IN ('static_prior','threat_intel','behavioural')),
++  evidence JSONB NOT NULL CHECK (jsonb_typeof(evidence) = 'array'),
++  PRIMARY KEY (sample_id, family)
++);
++CREATE TABLE IF NOT EXISTS result_provenance (
++  sample_id TEXT PRIMARY KEY REFERENCES samples(sample_id),
++  analysis_id TEXT,
++  pcap_sha256 TEXT NOT NULL,
++  provenance JSONB NOT NULL,
++  loaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++CREATE INDEX IF NOT EXISTS idx_exfil_domain ON exfil_events(destination_domain);
++INSERT INTO schema_versions(component, version)
++VALUES ('c2-exfil', 2)
++ON CONFLICT (component) DO UPDATE SET version = EXCLUDED.version,
++ applied_at = now();
++COMMIT;
+diff --git a/sql/schema.sql b/sql/schema.sql
+index f3b6398..de8b39d 100644
+--- a/sql/schema.sql
++++ b/sql/schema.sql
+@@ -1,6 +1,12 @@
+ -- Shared cross-module schema. All modules (Windows ST/DT, Windows C2/Exfil,
+ -- Android) write here. This file is the single source of truth for the contract.
+ 
++CREATE TABLE IF NOT EXISTS schema_versions (
++  component  TEXT PRIMARY KEY,
++  version    INTEGER NOT NULL CHECK (version > 0),
++  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
+ CREATE TABLE IF NOT EXISTS samples (
+   sample_id        TEXT PRIMARY KEY,          -- sha256
+   platform         TEXT NOT NULL,             -- 'windows' | 'android'
+@@ -26,6 +32,7 @@ CREATE TABLE IF NOT EXISTS exfil_events (
+   access_api_call     TEXT,
+   destination_ip      TEXT,
+   destination_port    INTEGER,
++  destination_domain  TEXT,
+   asn                 TEXT,
+   geo_country         TEXT,
+   reputation_score    REAL,
+@@ -45,5 +52,28 @@ CREATE TABLE IF NOT EXISTS evidence_log (
+   timestamp     TIMESTAMPTZ NOT NULL DEFAULT now()
+ );
+ 
++CREATE TABLE IF NOT EXISTS attributions (
++  sample_id   TEXT NOT NULL REFERENCES samples(sample_id),
++  family      TEXT NOT NULL,
++  confidence  TEXT NOT NULL CHECK (confidence IN ('confirmed','likely','possible')),
++  basis       TEXT NOT NULL CHECK (basis IN ('static_prior','threat_intel','behavioural')),
++  evidence    JSONB NOT NULL CHECK (jsonb_typeof(evidence) = 'array'),
++  PRIMARY KEY (sample_id, family)
++);
++
++CREATE TABLE IF NOT EXISTS result_provenance (
++  sample_id        TEXT PRIMARY KEY REFERENCES samples(sample_id),
++  analysis_id      TEXT,
++  pcap_sha256      TEXT NOT NULL,
++  provenance       JSONB NOT NULL,
++  loaded_at        TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++INSERT INTO schema_versions(component, version)
++VALUES ('c2-exfil', 2)
++ON CONFLICT (component) DO UPDATE SET version = EXCLUDED.version,
++  applied_at = now();
++
+ CREATE INDEX IF NOT EXISTS idx_exfil_sample ON exfil_events(sample_id);
+ CREATE INDEX IF NOT EXISTS idx_exfil_dstip  ON exfil_events(destination_ip);
++CREATE INDEX IF NOT EXISTS idx_exfil_domain ON exfil_events(destination_domain);

@@ -1,7 +1,219 @@
-diff --git a/.winstdt/0003-confidence-and-attribution-schema b/.winstdt/0003-confidence-and-attribution-schema
+diff --git a/pipeline/allowlist.py b/pipeline/allowlist.py
+index 4895ac5..bff9b08 100644
+--- a/pipeline/allowlist.py
++++ b/pipeline/allowlist.py
+@@ -28,6 +28,10 @@ import ipaddress
+ import json
+ import os
+ 
++EVENT_TIER_RANK = {"allowlisted": 0, "unconfirmed": 1, "weak": 2,
++                   "strong": 3, "confirmed": 4}
++
++
+ # Narrow, benign-by-nature endpoints (update / telemetry / OCSP / connectivity).
+ # NOT cloud storage or messaging — those are real exfil channels.
+ DEFAULT_DOMAINS = {
+@@ -96,5 +100,6 @@ def apply_allowlist(events: list[dict], allowlist=None) -> int:
+         if ok:
+             e["confidence_tier"] = "allowlisted"
+             e["allowlist_match"] = matched
++            e["allowlisted"] = True
+             n += 1
+     return n
+diff --git a/pipeline/attribution_contract.py b/pipeline/attribution_contract.py
 new file mode 100644
-index 0000000..89e2d18
+index 0000000..03d590d
 --- /dev/null
-+++ b/.winstdt/0003-confidence-and-attribution-schema
-@@ -0,0 +1 @@
-+WinST/DT compatibility patch: confidence and attribution contract.
++++ b/pipeline/attribution_contract.py
+@@ -0,0 +1,24 @@
++"""Validated attribution verdicts used by JSON and PostgreSQL outputs."""
++from __future__ import annotations
++
++CONFIDENCE = {"confirmed", "likely", "possible"}
++BASIS = {"static_prior", "threat_intel", "behavioural"}
++
++
++def validate_attribution(value: dict) -> dict:
++    family = value.get("family")
++    confidence = value.get("confidence")
++    basis = value.get("basis")
++    evidence = value.get("evidence")
++    if not isinstance(family, str) or not family.strip():
++        raise ValueError("attribution family must be a non-empty string")
++    if confidence not in CONFIDENCE:
++        raise ValueError("invalid attribution confidence")
++    if basis not in BASIS:
++        raise ValueError("invalid attribution basis")
++    if not isinstance(evidence, list) or not evidence:
++        raise ValueError("attribution evidence must be a non-empty array")
++    if any(not isinstance(item, dict) for item in evidence):
++        raise ValueError("each attribution evidence item must be an object")
++    return {"family": family.strip(), "confidence": confidence,
++            "basis": basis, "evidence": evidence}
+diff --git a/pipeline/winstdt_feed_import.py b/pipeline/winstdt_feed_import.py
+new file mode 100644
+index 0000000..1850f48
+--- /dev/null
++++ b/pipeline/winstdt_feed_import.py
+@@ -0,0 +1,161 @@
++"""Strict, offline and transactional WinST/DT threat-feed importer."""
++from __future__ import annotations
++import argparse
++import csv
++import hashlib
++import ipaddress
++import json
++import re
++import sqlite3
++from datetime import datetime, timezone
++from pathlib import Path
++from urllib.parse import urlsplit, urlunsplit
++
++KINDS = {"feodo", "urlhaus", "domain", "ja3", "ja4"}
++HASH_RE = re.compile(r"^[0-9a-f]+$")
++DOMAIN_RE = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
++
++
++class FeedError(ValueError):
++    pass
++
++
++def _timestamp(value: str) -> str:
++    value = value.strip().replace(" UTC", "+00:00")
++    try:
++        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
++    except ValueError as exc:
++        raise FeedError(f"invalid timestamp: {value}") from exc
++    if parsed.tzinfo is None:
++        parsed = parsed.replace(tzinfo=timezone.utc)
++    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
++
++
++def _domain(value: str) -> str:
++    value = value.strip().lower().rstrip(".")
++    try:
++        value = value.encode("idna").decode("ascii")
++    except UnicodeError as exc:
++        raise FeedError(f"invalid domain: {value}") from exc
++    if not DOMAIN_RE.fullmatch(value):
++        raise FeedError(f"invalid domain: {value}")
++    return value
++
++
++def _fingerprint(value: str, kind: str) -> str:
++    value = value.strip().lower()
++    if kind == "ja3" and (len(value) != 32 or not HASH_RE.fullmatch(value)):
++        raise FeedError("invalid JA3 hash")
++    if kind == "ja4" and not re.fullmatch(r"[a-z0-9_]{20,64}", value):
++        raise FeedError("invalid JA4 fingerprint")
++    return value
++
++
++def _url(value: str) -> tuple[str, str]:
++    parsed = urlsplit(value.strip())
++    if parsed.scheme not in ("http", "https") or not parsed.hostname:
++        raise FeedError(f"invalid URL: {value}")
++    host = _domain(parsed.hostname) if not _is_ip(parsed.hostname) else str(ipaddress.ip_address(parsed.hostname))
++    netloc = host + ((":" + str(parsed.port)) if parsed.port else "")
++    return urlunsplit((parsed.scheme.lower(), netloc, parsed.path or "/", parsed.query, "")), host
++
++
++def _is_ip(value: str) -> bool:
++    try:
++        ipaddress.ip_address(value)
++        return True
++    except ValueError:
++        return False
++
++
++def _rows(kind: str, path: Path):
++    lines = [line for line in path.read_text(encoding="utf-8-sig").splitlines()
++             if line.strip() and not line.lstrip().startswith("#")]
++    if not lines:
++        raise FeedError("feed contains no data rows")
++    if kind in ("domain", "ja3", "ja4"):
++        for number, line in enumerate(lines, 1):
++            raw = next(csv.reader([line]))[0].strip()
++            value = _domain(raw) if kind == "domain" else _fingerprint(raw, kind)
++            yield value, kind, None, None, number
++        return
++    for number, row in enumerate(csv.reader(lines), 1):
++        try:
++            if kind == "feodo":
++                if len(row) < 6:
++                    raise FeedError("expected six Feodo columns")
++                seen, raw_ip, raw_port, _status, _online, family = row[:6]
++                ip = str(ipaddress.ip_address(raw_ip.strip()))
++                port = int(raw_port)
++                if not 1 <= port <= 65535:
++                    raise FeedError("port outside 1..65535")
++                yield ip, "ip", f"{family.strip()} C2 port {port}", _timestamp(seen), number
++            else:
++                if len(row) < 7:
++                    raise FeedError("expected seven URLhaus columns")
++                _ident, seen, raw_url, _status, _online, threat, tags = row[:7]
++                normalized, host = _url(raw_url)
++                note = json.dumps({"url": normalized, "threat": threat.strip(), "tags": tags.strip()}, sort_keys=True)
++                yield host, "ip" if _is_ip(host) else "domain", note, _timestamp(seen), number
++        except (ValueError, FeedError) as exc:
++            raise FeedError(f"row {number}: {exc}") from exc
++
++
++def _schema(conn: sqlite3.Connection):
++    conn.executescript("""
++    CREATE TABLE IF NOT EXISTS bad_indicators (
++      value TEXT PRIMARY KEY, source TEXT NOT NULL, note TEXT,
++      indicator_type TEXT NOT NULL, last_seen TEXT);
++    CREATE TABLE IF NOT EXISTS feed_imports (
++      import_id INTEGER PRIMARY KEY, source TEXT NOT NULL,
++      revision TEXT NOT NULL, imported_at TEXT NOT NULL,
++      input_sha256 TEXT NOT NULL, row_count INTEGER NOT NULL,
++      UNIQUE(source, revision, input_sha256));
++    """)
++
++
++def import_feed(kind: str, input_path: str, db_path: str,
++                source: str, revision: str) -> dict:
++    if kind not in KINDS:
++        raise FeedError(f"unsupported feed kind: {kind}")
++    path = Path(input_path)
++    payload = path.read_bytes()
++    digest = hashlib.sha256(payload).hexdigest()
++    normalized = list(_rows(kind, path))  # validate every row before mutation
++    conn = sqlite3.connect(db_path)
++    try:
++        _schema(conn)
++        with conn:
++            for value, indicator_type, note, last_seen, _line in normalized:
++                conn.execute("""INSERT INTO bad_indicators
++                    (value,source,note,indicator_type,last_seen) VALUES (?,?,?,?,?)
++                    ON CONFLICT(value) DO UPDATE SET source=excluded.source,
++                    note=excluded.note,indicator_type=excluded.indicator_type,
++                    last_seen=excluded.last_seen""",
++                    (value, source, note, indicator_type, last_seen))
++            imported_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
++            conn.execute("""INSERT INTO feed_imports
++                (source,revision,imported_at,input_sha256,row_count) VALUES (?,?,?,?,?)
++                ON CONFLICT(source,revision,input_sha256) DO UPDATE SET
++                imported_at=excluded.imported_at,row_count=excluded.row_count""",
++                (source, revision, imported_at, digest, len(normalized)))
++    finally:
++        conn.close()
++    return {"source": source, "revision": revision, "input_sha256": digest,
++            "row_count": len(normalized)}
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description="Import a pinned local threat feed")
++    parser.add_argument("kind", choices=sorted(KINDS))
++    parser.add_argument("path")
++    parser.add_argument("--database", required=True)
++    parser.add_argument("--source", required=True)
++    parser.add_argument("--revision", required=True)
++    args = parser.parse_args(argv)
++    print(json.dumps(import_feed(args.kind, args.path, args.database,
++                                 args.source, args.revision), sort_keys=True))
++
++
++if __name__ == "__main__":
++    main()

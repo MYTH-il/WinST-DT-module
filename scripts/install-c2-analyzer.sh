@@ -75,6 +75,7 @@ trap cleanup EXIT
 sudo install -d -m 0755 "$stage/source"
 sudo cp -a "$source_root/." "$stage/source/"
 sudo install -d -m 0755 "$stage/source/.winstdt"
+sudo install -d -m 0755 "$stage/source/sql/migrations"
 for patch_name in "${patches[@]}"; do
   sudo patch --batch --forward --directory "$stage/source" -p1 --input "$PATCH_ROOT/$patch_name"
 done
@@ -84,7 +85,9 @@ sudo "$stage/.venv/bin/pip" install --disable-pip-version-check --require-hashes
 collected="$(cd "$stage/source" && sudo "$stage/.venv/bin/pytest" --collect-only -q | tail -n1 | awk '{print $1}')"
 [ "$collected" = 233 ] || { echo "unexpected upstream test count: $collected" >&2; exit 1; }
 (cd "$stage/source" && sudo "$stage/.venv/bin/pytest" -q)
-sudo "$stage/.venv/bin/python" -m pytest -q "$PROJECT_ROOT/tests/test_c2_patch_pipeline.py"
+sudo "$stage/.venv/bin/python" -m pytest -q \
+  "$PROJECT_ROOT/tests/test_c2_patch_pipeline.py" \
+  "$PROJECT_ROOT/tests/test_c2_compatibility.py"
 
 effective_tree="$(sudo python3 "$PROJECT_ROOT/scripts/c2-tree-hash.py" "$stage/source")"
 manifest_tmp="$(mktemp)"
