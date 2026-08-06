@@ -4,6 +4,16 @@ All notable project changes since the implementation plan was finalized are reco
 
 ## Unreleased
 
+- Updated the pristine C2-Exfil-E-Rakshak subtree to `47225ec`, adding the
+  explainable offline dictionary-DGA model, domain-only IOC fixes, attribution
+  context, retry-storm-safe beaconing, handoff-aware scoping and honesty gates,
+  per-run join fields, and linked custody evidence.
+- Rebased the WinST/DT runtime patch series, added result schema 1.1 and
+  PostgreSQL schema 3, made analysis caveats explicit, and extended immutable
+  result validation across session/task and custody-chain identities.
+- Promoted the tested `47225ec-winstdt.1` runtime while retaining the previous
+  runtime, applied the additive database migration, and passed sealed synthetic
+  and immutable-task replay validation; a fresh controlled detonation remains pending.
 - Added automated Windows guest finalization for modern CAPE agent installation,
   ETW provisioning/validation, guest hardening, cold-boot verification, and
   hardened snapshot resealing.

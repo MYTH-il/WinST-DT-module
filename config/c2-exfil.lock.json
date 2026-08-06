@@ -1,12 +1,12 @@
 {
   "schema_version": "2.0",
   "repository": "https://github.com/demistifying/C2-Exfil-E-Rakshak.git",
-  "commit": "c417276196586c676d3f0b63d23100d2cd20fce9",
+  "commit": "47225ecb439936659e55ffa9118db083bb2f56c2",
   "subtree": "integrations/c2-exfil",
-  "upstream_tree_sha256": "8ba5b28220e9f8493c2dadc7cdf88f2d8ede1fe0731037af7b99577bbf8742c8",
-  "effective_version": "c417276-winstdt.1",
-  "result_schema_version": "1.0",
-  "database_schema_version": 2,
+  "upstream_tree_sha256": "1dffbaf8efe35647a6e14d6c0a198a5e3f698ea8baefaab5aeae9ab76a3126db",
+  "effective_version": "47225ec-winstdt.1",
+  "result_schema_version": "1.1",
+  "database_schema_version": 3,
   "dependency_lock": "config/c2-exfil-requirements.lock.txt",
   "dependency_lock_sha256": "18d8e1acfd170b8f8c321aa3737b465ea4f19d28bcefd9534f5b6becb6e1ea6d",
   "patches": {
@@ -16,7 +16,7 @@
       "0003-confidence-and-attribution-schema.patch",
       "0004-provenance-and-fixture-safety.patch"
     ],
-    "series_sha256": "89a112b5794788fa75acc647b79faf48695f95d150b0721a1fe80601059692b7"
+    "series_sha256": "0d82a65d6ac3d3d829f622b6bb49a8b4a1e66470355bb73ba8cdf8ea70278b57"
   },
   "correlation_window_seconds": 15,
   "results_root": "/srv/winstdt/c2-results"

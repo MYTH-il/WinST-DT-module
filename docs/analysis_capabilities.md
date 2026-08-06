@@ -45,7 +45,7 @@ The handoff manifest records the requested profile, resolved options, and explic
 
 ## C2 and controlled egress
 
-`scripts/generate-access-events.py` creates clock-corrected `behavior/access_events.json` solely from CAPE/capemon observations and writes `access_events.status.json`. It requires start/end measurements, interpolates offset, checks the analysis window and ETW sidecars, and disables 15-second correlation at uncertainty of 7.5 seconds or greater. It never loads fixture events. The authorized analyzer is pinned from `https://github.com/demistifying/C2-Exfil-E-Rakshak.git`; see `c2_exfil_integration.md`.
+`scripts/generate-access-events.py` creates clock-corrected `behavior/access_events.json` solely from CAPE/capemon observations and writes `access_events.status.json`. It requires start/end measurements, interpolates offset, checks the analysis window and ETW sidecars, and disables 15-second correlation at uncertainty of 7.5 seconds or greater. It never loads fixture events. The authorized analyzer is pinned from `https://github.com/demistifying/C2-Exfil-E-Rakshak.git`; see `c2_exfil_integration.md`. The analyzer scopes flows to the manifest guest and detonation window, caps timing claims when clock quality is unacceptable, records telemetry/simulation caveats, rejects unanswered SYN retry storms as established beacons, and augments statistical DGA detection with an offline explainable dictionary-DGA model.
 
 ```text
 git subtree pull --prefix integrations/c2-exfil https://github.com/demistifying/C2-Exfil-E-Rakshak.git <reviewed-commit> --squash

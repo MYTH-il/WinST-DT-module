@@ -19,6 +19,9 @@ as a pinned Git subtree. The upstream project was created and is maintained by
 [Raghav Shrivastav (`demistifying`)](https://github.com/demistifying). We are
 grateful for his C2/exfiltration detection, correlation, provenance, and IOC
 export work; WinST/DT does not claim authorship of that module.
+The current pin adds explainable offline dictionary-DGA detection, manifest-aware
+guest/time scoping and honesty gates, retry-storm-safe beaconing, complete
+domain/attribution exports, and per-run custody-chain linkage.
 
 Questions, doubts, bug reports, or design discussions about the upstream module
 should be checked against its [actual repository and documentation](https://github.com/demistifying/C2-Exfil-E-Rakshak)

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://winst-dt.local/schemas/c2_analysis_notes.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task_id", "sample_id", "pcap_sha256", "session_id", "network_mode", "clock_quality_acceptable", "telemetry_degraded", "providers_unavailable", "scope_filter", "notes"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "task_id": {"type": "integer", "minimum": 1},
+    "sample_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pcap_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "session_id": {"type": "string", "minLength": 1},
+    "network_mode": {"enum": ["simulated_inetsim", "live_egress"]},
+    "clock_quality_acceptable": {"type": "boolean"},
+    "telemetry_degraded": {"type": "boolean"},
+    "providers_unavailable": {"type": "array", "items": {"type": "string"}},
+    "scope_filter": {"type": "object", "required": ["guest_ip", "detonation_start_utc", "detonation_end_utc", "applied"]},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

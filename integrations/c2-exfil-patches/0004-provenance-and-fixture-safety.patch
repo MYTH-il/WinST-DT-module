@@ -1,17 +1,8 @@
 diff --git a/pipeline/static_prior.py b/pipeline/static_prior.py
-index 55b33a5..1060a1b 100644
+index 912d7aa..1060a1b 100644
 --- a/pipeline/static_prior.py
 +++ b/pipeline/static_prior.py
-@@ -41,7 +41,7 @@ import ipaddress
- import json
- import os
- 
--VALID_TYPES = frozenset({"ip", "domain", "url", "email"})
-+VALID_TYPES = frozenset({"ip", "domain", "url", "email", "hash"})
- 
- 
- @dataclass
-@@ -91,12 +91,17 @@ class PriorReport:
+@@ -94,12 +94,17 @@ class PriorReport:
  
  
  def ingest_prior(raw: dict, *, strict: bool = False) -> PriorReport:

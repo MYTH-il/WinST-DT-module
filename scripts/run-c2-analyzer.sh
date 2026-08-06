@@ -14,9 +14,10 @@ validator="${WINSTDT_VALIDATOR:-$WINSTDT_ROOT/bin/winstdt}"
 "$validator" validate-bundle "$BUNDLE"
 pcap="$BUNDLE/network/capture.pcapng"
 test -s "$pcap" || { echo 'non-empty original PCAP required' >&2; exit 1; }
-test -x "$PYTHON" && test -f "$ANALYZER_ROOT/pipeline/orchestrator.py" || {
-  echo "versioned C2 runtime is unavailable: $RUNTIME" >&2; exit 1;
-}
+if ! test -x "$PYTHON" || ! test -f "$ANALYZER_ROOT/pipeline/orchestrator.py"; then
+  echo "versioned C2 runtime is unavailable: $RUNTIME" >&2
+  exit 1
+fi
 final="$RESULT_ROOT/$task_id"
 test ! -e "$final" || { echo "immutable derived result already exists: $final" >&2; exit 1; }
 mkdir -p "$RESULT_ROOT"
@@ -29,6 +30,7 @@ trap cleanup EXIT
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 cp "$pcap" "$stage/inputs/capture.pcapng"
 cp "$BUNDLE/sample.meta.json" "$stage/inputs/sample.meta.json"
+cp "$BUNDLE/manifest.json" "$stage/inputs/manifest.json"
 python3 - "$BUNDLE" >"$stage/inputs/handoff-hashes.before.json" <<'PY'
 import hashlib,json,sys
 from pathlib import Path
@@ -68,16 +70,22 @@ zeek_args=()
 test "$zeek_mode" = pcap_only || zeek_args=(--zeek-dir zeek)
 (cd "$stage" && "$PYTHON" "$ANALYZER_ROOT/pipeline/orchestrator.py" inputs/capture.pcapng \
   --analysis-id "$task_id" --sample-sha256 "$sample_sha256" --pcap-sha256 "$pcap_sha256" \
-  "${access_args[@]}" --static-prior inputs/static-prior.json "${zeek_args[@]}") >"$stage/analyzer.log" 2>&1
+  "${access_args[@]}" --static-prior inputs/static-prior.json --handoff inputs/manifest.json \
+  "${zeek_args[@]}") >"$stage/analyzer.log" 2>&1
 if [ "${WINSTDT_POSTGRES_ENABLED:-0}" = 1 ]; then
   (cd "$stage" && "$PYTHON" "$ANALYZER_ROOT/pipeline/db_loader.py" output/exfil_events.json)
   DATABASE_URL="${DATABASE_URL:?DATABASE_URL is required when PostgreSQL loading is enabled}" \
-    "$PYTHON" - "$stage/output/sql-verification.json" "$task_id" "$sample_sha256" "$pcap_sha256" <<'PY'
+    "$PYTHON" - "$stage/output/sql-verification.json" "$task_id" "$sample_sha256" "$pcap_sha256" "$stage/inputs/manifest.json" <<'PY'
 import json,os,sys,psycopg
-path,task,sample,pcap=sys.argv[1:]
+path,task,sample,pcap,manifest_path=sys.argv[1:]
+manifest=json.load(open(manifest_path,encoding='utf-8'))
+manifest_hash=manifest['integrity']['hash_manifest_sha256'].lower()
 with psycopg.connect(os.environ['DATABASE_URL']) as conn, conn.cursor() as cur:
-    cur.execute('select count(*) from exfil_events where sample_id=%s',(sample,)); count=cur.fetchone()[0]
-json.dump({'task_id':int(task),'sample_id':sample,'pcap_sha256':pcap,'row_count':count},open(path,'w')); open(path,'a').write('\n')
+    cur.execute('select count(*),count(*) filter (where manifest_sha256=%s) from exfil_events where sample_id=%s and cape_task_id=%s',(manifest_hash,sample,int(task)))
+    count,linked=cur.fetchone()
+if count and linked != 1:
+    raise SystemExit(f'expected exactly one custody-linked row, got {linked} of {count}')
+json.dump({'task_id':int(task),'sample_id':sample,'pcap_sha256':pcap,'session_id':manifest['session_id'],'manifest_sha256':manifest_hash,'row_count':count,'custody_linked_rows':linked},open(path,'w')); open(path,'a').write('\n')
 PY
 fi
 python3 "$PROJECT_ROOT/scripts/build-c2-result.py" "$stage" "$BUNDLE" "$RUNTIME" "$PROJECT_ROOT" \

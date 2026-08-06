@@ -2088,6 +2088,7 @@ fn validate_c2_result(result: &Path, handoff: &Path) -> Result<()> {
         "output/events.json",
         "output/attribution.json",
         "output/timeline.json",
+        "output/analysis_notes.json",
         "analyzer.log",
         "provenance.json",
         HASH_MANIFEST_PATH,
@@ -2116,6 +2117,14 @@ fn validate_c2_result(result: &Path, handoff: &Path) -> Result<()> {
     if provenance.get("fixture_usage").and_then(Value::as_bool) != Some(false) {
         return contract_error("production result declares fixture usage");
     }
+    if provenance.get("schema_version").and_then(Value::as_str) != Some("1.1")
+        || provenance
+            .get("database_schema_version")
+            .and_then(Value::as_u64)
+            != Some(3)
+    {
+        return contract_error("unsupported C2 result or database schema version");
+    }
     for key in [
         "upstream_repository",
         "upstream_commit",
@@ -2124,9 +2133,12 @@ fn validate_c2_result(result: &Path, handoff: &Path) -> Result<()> {
         "dependency_lock_sha256",
         "input_hashes",
         "handoff_hashes",
+        "handoff_context",
+        "custody_chain",
         "correlation_mode",
         "zeek",
         "feed_revisions",
+        "model_revisions",
         "database_schema_version",
         "started_at_utc",
         "ended_at_utc",
@@ -2151,6 +2163,7 @@ fn validate_c2_result(result: &Path, handoff: &Path) -> Result<()> {
         "output/events.json",
         "output/attribution.json",
         "output/timeline.json",
+        "output/analysis_notes.json",
     ] {
         required_identity(
             &read_json(&result.join(relative))?,
@@ -2177,13 +2190,49 @@ fn validate_c2_result(result: &Path, handoff: &Path) -> Result<()> {
         )?;
     }
     let event_doc: Value = read_json(&result.join("output/events.json"))?;
+    let handoff_manifest: Value = read_json(&handoff.join("manifest.json"))?;
+    let handoff_session = handoff_manifest
+        .get("session_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ValidationError::Contract("handoff session_id missing".into()))?;
+    let handoff_task = handoff_manifest
+        .get("cape_task_id")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| ValidationError::Contract("handoff cape_task_id missing".into()))?;
+    let handoff_seed = handoff_manifest
+        .pointer("/integrity/hash_manifest_sha256")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ValidationError::Contract("handoff manifest hash missing".into()))?;
+    let context = &provenance["handoff_context"];
+    if handoff_task != task_id
+        || context.get("session_id").and_then(Value::as_str) != Some(handoff_session)
+        || context.get("cape_task_id").and_then(Value::as_u64) != Some(task_id)
+        || context.get("manifest_sha256").and_then(Value::as_str) != Some(handoff_seed)
+    {
+        return contract_error("result handoff context identity mismatch");
+    }
+    let notes: Value = read_json(&result.join("output/analysis_notes.json"))?;
+    if notes.get("session_id").and_then(Value::as_str) != Some(handoff_session) {
+        return contract_error("analysis notes session identity mismatch");
+    }
     let tiers = ["confirmed", "strong", "weak", "unconfirmed", "allowlisted"];
-    for event in event_doc
+    let events = event_doc
         .get("events")
         .and_then(Value::as_array)
-        .ok_or_else(|| ValidationError::Contract("events.json events array missing".into()))?
-    {
+        .ok_or_else(|| ValidationError::Contract("events.json events array missing".into()))?;
+    for (index, event) in events.iter().enumerate() {
         required_identity(event, task_id, sample, pcap, "network event")?;
+        if event.get("session_id").and_then(Value::as_str) != Some(handoff_session)
+            || event.get("cape_task_id").and_then(Value::as_u64) != Some(task_id)
+        {
+            return contract_error("network event handoff join identity mismatch");
+        }
+        let manifest_link = event.get("manifest_sha256").and_then(Value::as_str);
+        if (index == 0 && manifest_link != Some(handoff_seed))
+            || (index > 0 && manifest_link.is_some())
+        {
+            return contract_error("invalid event custody seed placement");
+        }
         if !tiers.contains(
             &event
                 .get("confidence_tier")
@@ -2192,6 +2241,19 @@ fn validate_c2_result(result: &Path, handoff: &Path) -> Result<()> {
         ) {
             return contract_error("invalid event confidence tier");
         }
+    }
+    let custody = &provenance["custody_chain"];
+    let expected_tip = events
+        .last()
+        .and_then(|event| event.get("evidence_hash"))
+        .and_then(Value::as_str)
+        .unwrap_or(handoff_seed);
+    if custody.get("seed_sha256").and_then(Value::as_str) != Some(handoff_seed)
+        || custody.get("tip_sha256").and_then(Value::as_str) != Some(expected_tip)
+        || custody.get("event_count").and_then(Value::as_u64) != Some(events.len() as u64)
+        || custody.get("verified").and_then(Value::as_bool) != Some(true)
+    {
+        return contract_error("invalid linked custody-chain provenance");
     }
     let attribution: Value = read_json(&result.join("output/attribution.json"))?;
     for finding in attribution

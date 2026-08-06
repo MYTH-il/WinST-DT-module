@@ -1,5 +1,5 @@
 diff --git a/pipeline/orchestrator.py b/pipeline/orchestrator.py
-index 3945c22..15a6a56 100644
+index 49cb183..379861f 100644
 --- a/pipeline/orchestrator.py
 +++ b/pipeline/orchestrator.py
 @@ -18,6 +18,7 @@ on the REAL pcap.
@@ -10,13 +10,10 @@ index 3945c22..15a6a56 100644
  import sys
  import os
  import json
-@@ -444,26 +445,73 @@ def emit_schema_rows(network_events, correlated, sample_id):
+@@ -521,34 +522,80 @@ def emit_schema_rows(network_events, correlated, sample_id, handoff=None):
      return rows
  
  
--def main():
--    pcap = sys.argv[1] if len(sys.argv) > 1 else "data/sample_infostealer.pcap"
--    acc_path = sys.argv[2] if len(sys.argv) > 2 else "data/access_events_fixture.json"
 +def parse_cli(argv=None):
 +    parser = argparse.ArgumentParser(description="Run the C2/exfiltration analyzer")
 +    parser.add_argument("pcap", nargs="?", default="data/sample_infostealer.pcap")
@@ -29,6 +26,7 @@ index 3945c22..15a6a56 100644
 +                        choices=("real", "synthetic-test", "disabled"))
 +    parser.add_argument("--static-prior")
 +    parser.add_argument("--zeek-dir")
++    parser.add_argument("--handoff")
 +    parser.add_argument("--validation-mode", action="store_true")
 +    args = parser.parse_args(argv)
 +    if args.access_events and args.legacy_access_events:
@@ -46,7 +44,8 @@ index 3945c22..15a6a56 100644
 +        parser.error("--analysis-id must be numeric")
 +    for name in ("sample_sha256", "pcap_sha256"):
 +        value = getattr(args, name)
-+        if value and (len(value) != 64 or any(c not in "0123456789abcdefABCDEF" for c in value)):
++        if value and (len(value) != 64 or
++                      any(c not in "0123456789abcdefABCDEF" for c in value)):
 +            parser.error(f"--{name.replace('_', '-')} must be a SHA-256")
 +        if value:
 +            setattr(args, name, value.lower())
@@ -64,24 +63,40 @@ index 3945c22..15a6a56 100644
 +            if supplied == known and not (
 +                    args.access_events_source == "synthetic-test" and args.validation_mode):
 +                parser.error("the bundled access-event fixture requires synthetic-test validation mode")
++    if not args.handoff:
++        parser.error("--handoff is required for WinST/DT integrated execution")
 +    return args
- 
--    # Parse --zeek-dir / --static-prior flags if present
++
++
+ def main():
+-    pcap = sys.argv[1] if len(sys.argv) > 1 else "data/sample_infostealer.pcap"
+-    acc_path = sys.argv[2] if len(sys.argv) > 2 else "data/access_events_fixture.json"
+-
+-    # Parse --zeek-dir / --static-prior / --handoff flags if present
 -    zeek_dir = None
 -    static_prior_path = None
+-    handoff_path = None
 -    for i, arg in enumerate(sys.argv):
 -        if arg == "--zeek-dir" and i + 1 < len(sys.argv):
 -            zeek_dir = sys.argv[i + 1]
 -        if arg == "--static-prior" and i + 1 < len(sys.argv):
 -            static_prior_path = sys.argv[i + 1]
- 
+-        if arg == "--handoff" and i + 1 < len(sys.argv):
+-            handoff_path = sys.argv[i + 1]
+-
+-    handoff = None
+-    if handoff_path:
+-        from handoff import load_handoff
+-        handoff = load_handoff(handoff_path)
+-
 -    sample_id = hashlib.sha256(open(pcap, "rb").read()).hexdigest()
-+def main():
 +    args = parse_cli()
 +    pcap = args.pcap
 +    acc_path = args.access_events
 +    zeek_dir = args.zeek_dir
 +    static_prior_path = args.static_prior
++    from handoff import load_handoff
++    handoff = load_handoff(args.handoff, strict=True)
 +    sample_id = args.sample_sha256
  
      # Chain-of-custody: hash all inputs into a reproducible case manifest.
@@ -93,12 +108,13 @@ index 3945c22..15a6a56 100644
 +                    "sample_sha256": sample_id,
 +                    "pcap_sha256": args.pcap_sha256,
 +                    "access_events": os.path.basename(acc_path) if acc_path else None,
-+                    "access_events_source": args.access_events_source})
++                    "access_events_source": args.access_events_source,
++                    "handoff": os.path.basename(args.handoff)})
      os.makedirs("output", exist_ok=True)
      manifest.write("output/case_manifest.json")
  
-@@ -486,11 +534,13 @@ def main():
-         print(f"    [{e['kind']:6}] {e['dst_ip']}:{e['dst_port']} "
+@@ -578,11 +625,13 @@ def main():
+         print(f"    [{e['kind']:6}] {dest}{port} "
                f"conf={e['confidence']}{geo}{ja3}{flag}")
  
 -    fixture = os.path.exists(acc_path)

@@ -36,6 +36,7 @@ def test_each_patch_applies_to_a_fresh_copy(tmp_path):
     assert (source / "pipeline/orchestrator.py").is_file()
     assert (source / "pipeline/winstdt_feed_import.py").is_file()
     assert (source / "sql/migrations/002_winstdt_compat.sql").is_file()
+    assert (source / "sql/migrations/003_upstream_1_2.sql").is_file()
 
 
 def test_installer_is_versioned_and_never_deletes_active_runtime():
@@ -44,3 +45,11 @@ def test_installer_is_versioned_and_never_deletes_active_runtime():
     assert "--require-hashes" in script
     assert "mv -Tf" in script
     assert "rsync --delete" not in script
+
+
+def test_database_migrator_handles_fresh_v1_v2_and_v3():
+    script = (ROOT / "scripts/migrate-c2-database.sh").read_text()
+    assert "to_regclass('public.schema_versions')" in script
+    assert 'schema_root/schema.sql' in script
+    assert '1)' in script and '2)' in script and '3)' in script
+    assert "DROP TABLE" not in script.upper()

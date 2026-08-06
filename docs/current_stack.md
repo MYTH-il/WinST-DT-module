@@ -1,6 +1,6 @@
 # Current Stack and Capability Status
 
-Status date: 2026-08-05. `Working` means a current acceptance record exists; software installation alone is not sufficient.
+Status date: 2026-08-06. `Working` means a current acceptance record exists; software installation alone is not sufficient.
 
 | Capability | Status | Evidence or remaining gate |
 |---|---|---|
@@ -12,9 +12,9 @@ Status date: 2026-08-05. `Working` means a current acceptance record exists; sof
 | Detect It Easy 3.10 | Working | [acceptance:die_3_10] Official package hash, exact version, database access, PE positive, and text negative validated live |
 | CAPA/FLOSS/TRiD/Volatility | Degraded | Installed or profile-gated; completed-task positives remain required where indicated in `analysis_capabilities.md` |
 | Suricata | Working | [acceptance:full_end_to_end] Pinned passive processing emitted three controlled-canary alerts from the CAPE capture |
-| C2 upstream subtree | Working | [acceptance:c2_compatibility] Pristine `c417276196586c676d3f0b63d23100d2cd20fce9`; 233 collected, 222 passed, 11 upstream-declared corpus skips |
-| C2 compatibility runtime | Working | [acceptance:full_end_to_end] Versioned runtime completed real correlation, attribution, IOC, provenance, and immutable result validation |
-| PostgreSQL contract | Working | [acceptance:full_end_to_end] Schema v2 migration and JSON/SQL sample, PCAP, task, and row-count round trip passed |
+| C2 upstream subtree | Working | [acceptance:c2_compatibility] Pristine `47225ecb439936659e55ffa9118db083bb2f56c2`; 268 collected, 254 passed, 11 corpus skips, and 3 explicitly deselected tests depend on an upstream-ignored PCAP and are replaced by local synthetic contract tests |
+| C2 compatibility runtime | Pending full live revalidation | Effective `47225ec-winstdt.1` is deployed; installer gates, an event-producing synthetic chain, and a sealed replay of immutable task 11 passed, while the prior full detonation acceptance predates this update |
+| PostgreSQL contract | Pending round-trip revalidation | Additive schema v3 is applied and verified with all new columns; the prior JSON/SQL round trip predates this update |
 | Access-event adapter | Working | [acceptance:full_end_to_end] Real CAPE/capemon events passed clock interpolation and correlation eligibility checks |
 | Controlled-services network | Working | [acceptance:controlled_services_network] Isolated `192.168.125.0/24` has no libvirt forwarding element |
 | Controlled responder | Working | [acceptance:full_end_to_end] Private DNS and three deterministic signed receipts passed with no public route |
