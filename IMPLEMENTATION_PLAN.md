@@ -279,12 +279,49 @@ offline pretrained models or standard datasets exist. It never replaces the
 explainable core, and every ML verdict is accompanied by the human-readable
 features that drove it.
 
-- **Yes:** DGA domain classification; DNS-tunneling statistical classification;
-  malware-family classification from static features (e.g. EMBER-style);
-  encrypted-traffic/JA4 clustering.
+Status of the four candidates, after building the one that pays for itself:
+
+- **DGA domain classification — ✅ BUILT (the one ML component).** `pipeline/
+  dga_classifier.py` + `data/models/dga_lr.json`. The entropy heuristic in
+  `dns_analysis.detect_dga` catches *random* DGAs but structurally misses
+  *dictionary* DGAs (suppobox/matsnu/gozi — real words concatenated, so entropy
+  stays benign). A char-n-gram logistic-regression model closes that gap. It is
+  deliberately built to satisfy the constraints below: shipped as **auditable
+  JSON weights** (no pickle, no runtime ML dependency), pure-Python deterministic
+  inference, every verdict carries the driving n-grams, and it **augments** the
+  heuristic as a *weak candidate* (never asserts). Validated on held-out **real**
+  published DGA IOCs in `tests/test_dga_classifier.py`, not on the training
+  generator. Re-trainable offline via `tools/train_dga_classifier.py`; swap in
+  Netlab360/Bambenek/DGArchive feeds to harden.
+- **DNS-tunneling classification — stays statistical (no ML).** The multi-feature
+  scorer in `detect_dns_tunneling` (entropy + sub-length + tunnel-RT fraction +
+  volume) already *is* the standard tool. Explicit, inspectable thresholds are
+  easier to defend in court than a model, and a classifier over the same features
+  adds only threshold auto-tuning. Not worth the black-box cost here.
+- **Family classification from static features (EMBER-style) — out of scope for
+  this module.** It operates on the PE binary, which is the ST/DT module's domain.
+  Building it here is exactly the redundancy the module is scoped to avoid; this
+  module's family attribution stays network-behavioural + threat-intel + consuming
+  the static prior (F3).
+- **JA4 *clustering* — deferred / out of scope.** Clustering needs a cross-case
+  JA4 corpus, which collides with the single-sample, no-baseline model (see the
+  non-goal below). Exact JA4 match against known-bad — the high-value use — is
+  already implemented.
 - **No:** network-wide behavioural-baseline anomaly detection — the single-sample
   clean-sandbox model has no "normal" to baseline against, and black-box scoring
   is a liability for court admissibility.
+- **No:** a "new/previously-unseen destination" filter. This is a specific case of
+  the baseline non-goal above: it presupposes persistent cross-run state (a set of
+  destinations seen before) to diff against, which the clean-sandbox, per-case,
+  deterministic-`case_id` model does not keep and must not depend on. In a pristine
+  detonation every external destination is the sample's doing, so a novelty filter
+  would either flag everything or risk *hiding* a real C2 that also carries benign
+  traffic — the opposite of a recall-first forensic posture. The legitimate intent
+  (don't drown the analyst in already-explained egress) is served instead, without
+  any baseline, by the catch-all's `covered_dsts` residual filter — it surfaces only
+  egress *not* already explained by a specific detector — and by the F2 sanctioned-
+  service allowlist, which down-tiers known-good update/telemetry/OCSP noise without
+  ever hiding it.
 - **Constraint:** any ML component ships with its training data provenance, is
   reproducible offline, and outputs feature-level explanations.
 
